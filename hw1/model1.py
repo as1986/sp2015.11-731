@@ -16,15 +16,11 @@ def init_align(numbered_e_sentences, numbered_g_sentences):
     for g_sen, e_sen in zip(numbered_g_sentences,numbered_e_sentences):
         alignment = []
         for e in e_sen:
-            a = random.randint(0, len(g_sen))
+            a = random.randint(0, len(g_sen)-1)
             alignment.append(a)
-            if a == 0:
-                g_counts[0] += 1
-                g_e_counts[0][e] += 1
-            else:
-                g_idx = a - 1
-                g_counts[g_sen[g_idx]] += 1
-                g_e_counts[g_sen[g_idx]][e] += 1
+            g_idx = a
+            g_counts[g_sen[g_idx]] += 1
+            g_e_counts[g_sen[g_idx]][e] += 1
         alignments.append(alignment)
     return (alignments, g_counts, g_e_counts)
 
@@ -43,30 +39,21 @@ def sample_from(table):
 def sample(alignment, g_sen, e_sen, g_counts, g_e_counts, e_vocab_size):
 
     theta = 1
-    for a_idx, (a,e) in enumerate(zip(alignment, e_sen)):
+    for g_idx,e in zip(alignment, e_sen):
         # first remove count
-        if a == 0:
-            g_counts[0] -= 1
-            g_e_counts[0][e] -= 1
-        else:
-            g_idx = a - 1
-            g_counts[g_sen[g_idx]] -= 1
-            g_e_counts[g_sen[g_idx]][e] -= 1
+        g_counts[g_sen[g_idx]] -= 1
+        g_e_counts[g_sen[g_idx]][e] -= 1
+
+    for a_idx, e in enumerate(e_sen):
         prob_table = []
-        prob_table.append((g_e_counts[0][e] + theta) * 1. / (g_counts[0] + theta * (e_vocab_size-1) ))
-        for g in g_sen:
-            idx = g
-            prob_g = (g_e_counts[idx][e] + theta) * 1. / (g_counts[idx] + theta * (e_vocab_size-1) )
+        for g_idx in g_sen:
+            prob_g = (g_e_counts[g_idx][e] + theta) * 1. / (g_counts[g_idx] + theta * e_vocab_size )
             prob_table.append(prob_g)
         sampled = sample_from(prob_table)
         alignment[a_idx] = sampled
-        if sampled == 0:
-            g_counts[0] += 1
-            g_e_counts[0][e] += 1
-        else:
-            g_idx = sampled - 1
-            g_counts[g_sen[g_idx]] += 1
-            g_e_counts[g_sen[g_idx]][e] += 1
+    for g_idx,e in zip(alignment, e_sen):
+        g_counts[g_sen[g_idx]] += 1
+        g_e_counts[g_sen[g_idx]][e] += 1
     return
 
 
@@ -77,7 +64,7 @@ def create_vocab(sentences):
         to_append = []
         for w in s:
             if w not in all_elems:
-                all_elems[w] = len(all_elems)+1
+                all_elems[w] = len(all_elems)
             to_append.append(all_elems[w])
         to_return.append(to_append)
     return all_elems, to_return
@@ -95,31 +82,62 @@ def read_aligned(fname):
     assert len(f_sentences) == len(e_sentences)
     return (f_sentences, e_sentences)
 
+def init_record(alignments):
+    to_return = []
+    for alignment in alignments:
+        to_append = []
+        for i in range(len(alignment)):
+            to_append.append(Counter())
+        to_return.append(to_append)
+    return to_return
 
-def record(alignments):
-    print 'dummy -- should be recording'
+def record(alignments, recorded):
+    # print 'recording'
+    assert len(alignments) == len(recorded)
+    for i in range(len(recorded)):
+        assert len(alignments[i]) == len(recorded[i])
+        for j in range(len(recorded[i])):
+            recorded[i][j].update([alignments[i][j]])
     return
 
+def output_record(recorded, epoch, great_epoch):
+    with open(u'output_epoch_{}_great_epoch_{}'.format(epoch, great_epoch), mode='w') as fh:
+        for record in recorded:
+            fh.write(u' '.join([unicode(x.most_common(1)[0][0]) for x in record])+u'\n')
 
 def main():
     import sys
     (f,e) = read_aligned(sys.argv[1])
     f_vocab, numbered_f = create_vocab(f)
     e_vocab, numbered_e = create_vocab(e)
-    print len(f_vocab), len(e_vocab)
-    (alignments, f_counts, f_e_counts) = init_align(numbered_e,numbered_f)
+    # print len(f_vocab), len(e_vocab)
+
+    rec = None
+
+    # great epochs
+    num_great_epochs = 3
 
     # epochs
-    num_epochs = 5
-    burnins = 1
-    for epoch in range(num_epochs):
-        print 'epoch {}:'.format(epoch)
-        shuffled = range(len(alignments))
-        random.shuffle(shuffled)
-        for sen_idx in shuffled:
-            sample(alignments[sen_idx], numbered_f[sen_idx], numbered_e[sen_idx], f_counts, f_e_counts, len(e_vocab))
-        if epoch + 1 > burnins:
-            record(alignments)
+    num_epochs = 100
+    
+    burnins = 10
+
+    record_every = 10
+
+    for great_epoch in range(num_great_epochs):
+        (alignments, f_counts, f_e_counts) = init_align(numbered_e,numbered_f)
+        if rec is None:
+            rec = init_record(alignments)
+        for epoch in range(num_epochs):
+            # print 'epoch {}:'.format(epoch)
+            shuffled = range(len(alignments))
+            random.shuffle(shuffled)
+            for sen_idx in shuffled:
+                sample(alignments[sen_idx], numbered_f[sen_idx], numbered_e[sen_idx], f_counts, f_e_counts, len(e_vocab))
+            if epoch + 1 > burnins:
+                record(alignments, rec)
+                if epoch % record_every == 0:
+                    output_record(rec, epoch, great_epoch)
     return
 
 if __name__ == '__main__':
