@@ -7,7 +7,8 @@ def main():
         for l in fh:
             line_output = []
             for idx, w in enumerate(l.strip().split()):
-                line_output.append(u'{}-{}'.format(w,idx))
+                if w != '-1':
+                    line_output.append(u'{}-{}'.format(w,idx))
             print u' '.join(line_output)
 
 if __name__ == '__main__':
