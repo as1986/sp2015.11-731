@@ -34,11 +34,11 @@ def sample_from(table):
         if current_sum > draw:
             return i
     # unlikely
+    print "things have probably gone bad in the sampler..."
     return len(table)-1
 
-def sample(alignment, g_sen, e_sen, g_counts, g_e_counts, e_vocab_size):
+def sample(alignment, g_sen, e_sen, g_counts, g_e_counts, e_vocab_size, theta):
 
-    theta = 1
     for g_idx,e in zip(alignment, e_sen):
         # first remove count
         g_counts[g_sen[g_idx]] -= 1
@@ -100,8 +100,8 @@ def record(alignments, recorded):
             recorded[i][j].update([alignments[i][j]])
     return
 
-def output_record(recorded, epoch, great_epoch):
-    with open(u'output_epoch_{}_great_epoch_{}'.format(epoch, great_epoch), mode='w') as fh:
+def output_record(recorded, epoch, great_epoch, theta):
+    with open(u'output_epoch_{}_great_epoch_{}_theta_{}'.format(epoch, great_epoch, theta), mode='w') as fh:
         for record in recorded:
             fh.write(u' '.join([unicode(x.most_common(1)[0][0]) for x in record])+u'\n')
 
@@ -124,6 +124,8 @@ def main():
 
     record_every = 10
 
+    theta = 0.1
+
     for great_epoch in range(num_great_epochs):
         (alignments, f_counts, f_e_counts) = init_align(numbered_e,numbered_f)
         if rec is None:
@@ -133,11 +135,11 @@ def main():
             shuffled = range(len(alignments))
             random.shuffle(shuffled)
             for sen_idx in shuffled:
-                sample(alignments[sen_idx], numbered_f[sen_idx], numbered_e[sen_idx], f_counts, f_e_counts, len(e_vocab))
+                sample(alignments[sen_idx], numbered_f[sen_idx], numbered_e[sen_idx], f_counts, f_e_counts, len(e_vocab), theta)
             if epoch + 1 > burnins:
                 record(alignments, rec)
                 if epoch % record_every == 0:
-                    output_record(rec, epoch, great_epoch)
+                    output_record(rec, epoch, great_epoch, theta)
     return
 
 if __name__ == '__main__':
