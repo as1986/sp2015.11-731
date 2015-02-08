@@ -1,9 +1,10 @@
 #!/usr/bin/python
 
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, namedtuple
 from io import open
 import random
 
+Position = namedtuple("idx", "len_g", "len_e")
 
 def init_align(numbered_e_sentences, numbered_g_sentences):
     # counts of alignments g -> *
@@ -12,18 +13,23 @@ def init_align(numbered_e_sentences, numbered_g_sentences):
     # counts of alignments g -> e
     g_e_counts = defaultdict(lambda: defaultdict(int))
 
+    # counts of positions g_idx, len_g, len_e -> e_idx
+    position_counts = defaultdict(lambda: defaultdict(int))
+
     alignments = []
     for g_sen, e_sen in zip(numbered_g_sentences,numbered_e_sentences):
         alignment = []
-        for e in e_sen:
+        for e_idx, e in enumerate(e_sen):
             g_idx = random.randint(-1, len(g_sen)-1)
             alignment.append(g_idx)
             if g_idx == -1:
                 g_counts[-1] += 1
                 g_e_counts[-1][e] += 1
+                position_counts[Position(idx=-1, len_g=len(g_sen), len_e=len(e_sen))][e_idx] += 1
             else:
                 g_counts[g_sen[g_idx]] += 1
                 g_e_counts[g_sen[g_idx]][e] += 1
+                position_counts[Position(idx=g_idx, len_g=len(g_sen), len_e=len(e_sen))][e_idx] += 1
         alignments.append(alignment)
     return (alignments, g_counts, g_e_counts)
 
@@ -40,32 +46,33 @@ def sample_from(table):
     print "things have probably gone bad in the sampler..."
     return len(table)-1
 
-def sample(alignment, g_sen, e_sen, g_counts, g_e_counts, e_vocab_size, theta):
+def sample(alignment, g_sen, e_sen, g_counts, g_e_counts, positions, e_vocab_size, theta, beta=1.):
 
-    def increment_count(g_idx, e, by):
+    def increment_count(g_idx, e_idx, g_len, e_len, e, by):
         if g_idx == -1:
             g_counts[-1] += by
             g_e_counts[-1][e] += by
         else:
             g_counts[g_sen[g_idx]] += by
             g_e_counts[g_sen[g_idx]][e] += by
+        positions[Position(idx=g_idx, len_g=g_len, len_e = e_len)][e_idx] += by
 
 
-    for g_idx,e in zip(alignment, e_sen):
+    for e_idx, (g_idx,e) in enumerate(zip(alignment, e_sen)):
         # first remove count
-        increment_count(g_idx, e, -1)
+        increment_count(g_idx, e_idx, len(g_sen), len(e_sen), e, -1)
 
     for a_idx, e in enumerate(e_sen):
         prob_table = []
-        prob_g = (g_e_counts[-1][e] + theta) * 1. / (g_counts[-1] + theta * e_vocab_size )
+        prob_g = (positions[Position(idx=-1, len_g=len(g_sen), len_e = len(e_sen))][a_idx] + beta) * (g_e_counts[-1][e] + theta) * 1. / (g_counts[-1] + theta * e_vocab_size )
         prob_table.append(prob_g)
         for g_idx in g_sen:
-            prob_g = (g_e_counts[g_idx][e] + theta) * 1. / (g_counts[g_idx] + theta * e_vocab_size )
+            prob_g = (positions[Position(idx=g_idx, len_g=len(g_sen), len_e = len(e_sen))][a_idx] + beta) * (g_e_counts[g_idx][e] + theta) * 1. / (g_counts[g_idx] + theta * e_vocab_size )
             prob_table.append(prob_g)
         sampled = sample_from(prob_table) - 1
         alignment[a_idx] = sampled
     for g_idx,e in zip(alignment, e_sen):
-        increment_count(g_idx, e, 1)
+        increment_count(g_idx, e_idx, len(g_sen), len(e_sen), e, 1)
     return
 
 
