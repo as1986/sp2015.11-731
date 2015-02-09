@@ -124,8 +124,8 @@ def record(alignments, recorded):
             recorded[i][j].update([alignments[i][j]])
     return
 
-def output_record(recorded, epoch, great_epoch, theta, prefix):
-    with open(u'{}_epoch_{}_great_epoch_{}_theta_{}'.format(prefix, epoch, great_epoch, theta), mode='w') as fh:
+def output_record(recorded, epoch, great_epoch, theta, beta, prefix):
+    with open(u'{}_epoch_{}_great_epoch_{}_theta_{}_beta_{}'.format(prefix, epoch, great_epoch, theta, beta), mode='w') as fh:
         for record in recorded:
             fh.write(u' '.join([unicode(x.most_common(1)[0][0]) for x in record])+u'\n')
 
@@ -153,6 +153,7 @@ def main():
     record_every = 10
 
     theta = 1e-5
+    beta = 1.
 
     for great_epoch in range(num_great_epochs):
         (alignments, f_counts, f_e_counts, positions) = init_align(numbered_e,numbered_f)
@@ -163,11 +164,11 @@ def main():
             shuffled = range(len(alignments))
             random.shuffle(shuffled)
             for sen_idx in shuffled:
-                sample(alignments[sen_idx], numbered_f[sen_idx], numbered_e[sen_idx], f_counts, f_e_counts, positions, len(e_vocab), theta)
+                sample(alignments[sen_idx], numbered_f[sen_idx], numbered_e[sen_idx], f_counts, f_e_counts, positions, len(e_vocab), theta, beta)
             if epoch + 1 > burnins:
                 record(alignments, rec)
                 if epoch % record_every == 0:
-                    output_record(rec, epoch, great_epoch, theta, args.output_prefix)
+                    output_record(rec, epoch, great_epoch, theta, beta, args.output_prefix)
     return
 
 if __name__ == '__main__':
