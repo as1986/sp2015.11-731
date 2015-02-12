@@ -219,6 +219,7 @@ def main():
             if epoch + 1 > burnins:
                 record(alignments, rec, back_e, back_f)
                 if epoch % record_every == 0 or test_record is True:
+                    test_record = False
                     output_record(rec, epoch, great_epoch, theta, beta, args.output_prefix)
     return
 
