@@ -139,7 +139,7 @@ def record(alignments, recorded, back_e, back_f):
         for j in range(len(alignments[i])):
             al = alignments[i][j]
             if al == -1:
-                recorded[i][back_e[i][j]].update([back_f[i][-1]])
+                recorded[i][back_e[i][j]].update([-1])
             else:
                 recorded[i][back_e[i][j]].update([back_f[i][alignments[i][j]]])
     return
