@@ -135,7 +135,8 @@ def record(alignments, recorded, back_e, back_f):
     # print 'recording'
     assert len(alignments) == len(recorded)
     for i in range(len(recorded)):
-        assert len(alignments[i]) == len(recorded[i])
+        assert len(back_e[i]) == len(recorded[i])
+        
         for j in range(len(alignments[i])):
             al = alignments[i][j]
             if al == -1:
@@ -209,7 +210,7 @@ def main():
     for great_epoch in range(num_great_epochs):
         (alignments, f_counts, f_e_counts, positions) = init_align(expanded_e,expanded_f, back_e, back_f)
         if rec is None:
-            rec = init_record(back_e)
+            rec = init_record(numbered_e)
         for epoch in range(num_epochs):
             print 'epoch {}:'.format(epoch)
             shuffled = range(len(alignments))
@@ -218,7 +219,7 @@ def main():
                 sample(alignments[sen_idx], expanded_f[sen_idx], expanded_e[sen_idx], f_counts, f_e_counts, positions, len(e_vocab), back_f[sen_idx], back_e[sen_idx], theta, beta)
             if epoch + 1 > burnins:
                 record(alignments, rec, back_e, back_f)
-                if epoch % record_every == 0 or test_record is True:
+                if epoch % record_every == 0 or test_record == True:
                     test_record = False
                     output_record(rec, epoch, great_epoch, theta, beta, args.output_prefix)
     return
