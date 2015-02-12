@@ -189,6 +189,7 @@ def main():
 
     # print len(f_vocab), len(e_vocab)
 
+    test_record = True
 
     rec = None
 
@@ -217,7 +218,7 @@ def main():
                 sample(alignments[sen_idx], expanded_f[sen_idx], expanded_e[sen_idx], f_counts, f_e_counts, positions, len(e_vocab), back_f[sen_idx], back_e[sen_idx], theta, beta)
             if epoch + 1 > burnins:
                 record(alignments, rec, back_e, back_f)
-                if epoch % record_every == 0:
+                if epoch % record_every == 0 or test_record is True:
                     output_record(rec, epoch, great_epoch, theta, beta, args.output_prefix)
     return
 
