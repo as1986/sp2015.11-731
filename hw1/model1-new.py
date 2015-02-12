@@ -49,18 +49,18 @@ def sample_from(table):
     print "things have probably gone bad in the sampler..."
     return len(table)-1
 
-def sample(alignment, g_sen, e_sen, g_counts, g_e_counts, positions, e_vocab_size, back_g, back_e, sen_idx, theta, beta=2.):
+def sample(alignment, g_sen, e_sen, g_counts, g_e_counts, positions, e_vocab_size, back_g_row, back_e_row, theta, beta=2.):
 
     def increment_count(g_idx, e_idx, e, by):
         if g_idx == -1:
             g_counts[-1] += by
             g_e_counts[-1][e] += by
-            positions[Position(idx=-1, len_g=len(back_g[sen_idx]), len_e = len(back_e[sen_idx]))][back_e[sen_idx][e_idx]] += by
+            positions[Position(idx=-1, len_g=len(back_g_row), len_e = len(back_e_row))][back_e_row[e_idx]] += by
         else:
             g_counts[g_sen[g_idx]] += by
             g_e_counts[g_sen[g_idx]][e] += by
             # positions[Position(idx=g_idx, len_g=g_len, len_e = e_len)][e_idx] += by
-            positions[Position(idx=back_g[sen_idx][g_idx], len_g=len(back_g[sen_idx]), len_e = len(back_e[sen_idx]))][back_e[sen_idx][e_idx]] += by
+            positions[Position(idx=back_g_row[g_idx], len_g=len(back_g_row), len_e = len(back_e_row))][back_e_row[e_idx]] += by
 
 
     for e_idx, (g_idx,e) in enumerate(zip(alignment, e_sen)):
@@ -72,10 +72,10 @@ def sample(alignment, g_sen, e_sen, g_counts, g_e_counts, positions, e_vocab_siz
 
     for a_idx, e in enumerate(e_sen):
         prob_table = []
-        prob_g = (positions[Position(idx=-1, len_g=len(back_g[sen_idx]), len_e = len(back_e[sen_idx]))][back_e[sen_idx][a_idx]] + beta) * (g_e_counts[-1][e] + theta) * 1. / (g_counts[-1] + theta * e_vocab_size )
+        prob_g = (positions[Position(idx=-1, len_g=len(back_g_row), len_e = len(back_e_row))][back_e_row[a_idx]] + beta) * (g_e_counts[-1][e] + theta) * 1. / (g_counts[-1] + theta * e_vocab_size )
         prob_table.append(prob_g)
         for g_idx, g in enumerate(g_sen):
-            prob_g = (positions[Position(idx=back_g[sen_idx][g_idx], len_g=len(back_g[sen_idx]), len_e = len(back_e[sen_idx]))][back_e[sen_idx][a_idx]] + beta) * (g_e_counts[g][e] + theta) * 1. / (g_counts[g] + theta * e_vocab_size )
+            prob_g = (positions[Position(idx=back_g_row[g_idx], len_g=len(back_g_row), len_e = len(back_e_row))][back_e_row[a_idx]] + beta) * (g_e_counts[g][e] + theta) * 1. / (g_counts[g] + theta * e_vocab_size )
             prob_table.append(prob_g)
         sampled = sample_from(prob_table) - 1
         alignment[a_idx] = sampled
@@ -168,12 +168,21 @@ def main():
     parser.add_argument('--output-prefix', default='output')
     parser.add_argument('--split-f', default=None)
     parser.add_argument('--split-e', default=None)
+    parser.add_argument('--reverse', action='store_true')
     args = parser.parse_args()
-    split_f_words = load_split(args.split_f)
-    split_e_words = load_split(args.split_e)
-    (f,e) = read_aligned(args.aligned)
-    f_vocab, numbered_f, expanded_f, back_f = create_vocab(f, split_f_words)
-    e_vocab, numbered_e, expanded_e, back_e = create_vocab(e, split_e_words)
+    if not args.reverse:
+        split_f_words = load_split(args.split_f)
+        split_e_words = load_split(args.split_e)
+        (f,e) = read_aligned(args.aligned)
+        f_vocab, numbered_f, expanded_f, back_f = create_vocab(f, split_f_words)
+        e_vocab, numbered_e, expanded_e, back_e = create_vocab(e, split_e_words)
+    else:
+        split_f_words = load_split(args.split_f)
+        split_e_words = load_split(args.split_e)
+        (f,e) = read_aligned(args.aligned)
+        e_vocab, numbered_e, expanded_e, back_e = create_vocab(f, split_f_words)
+        f_vocab, numbered_f, expanded_f, back_f = create_vocab(e, split_e_words)
+
     # print len(f_vocab), len(e_vocab)
 
 
@@ -201,7 +210,7 @@ def main():
             shuffled = range(len(alignments))
             random.shuffle(shuffled)
             for sen_idx in shuffled:
-                sample(alignments[sen_idx], expanded_f[sen_idx], expanded_e[sen_idx], f_counts, f_e_counts, positions, len(e_vocab), back_f, back_e, sen_idx, theta, beta)
+                sample(alignments[sen_idx], expanded_f[sen_idx], expanded_e[sen_idx], f_counts, f_e_counts, positions, len(e_vocab), back_f[sen_idx], back_e[sen_idx], theta, beta)
             if epoch + 1 > burnins:
                 record(alignments, rec, back_e, back_f)
                 if epoch % record_every == 0:
