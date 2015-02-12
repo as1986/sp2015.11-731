@@ -5,7 +5,7 @@ if [ $? -ne 0 ] ; then
   echo Cannot find python in your path! 1>&2
   exit 1
 fi
-(python --version 2>&1) | perl -e '$_=<>; exit 0 if /2\.7\.\d+$/; exit 1;'
+(python --version 2>&1) | perl -e '$_=<>; exit 0 if /2\.7\.\d+.*$/; exit 1;'
 if [ $? -ne 0 ] ; then
   echo Incorrect version of Python in your path! 1>&2
   exit 1
