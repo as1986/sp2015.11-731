@@ -135,7 +135,7 @@ def record(alignments, recorded, back_e, back_f):
     # print 'recording'
     assert len(alignments) == len(recorded)
     for i in range(len(recorded)):
-        assert len(back_e[i]) == len(recorded[i])
+        assert len(alignments[i]) == len(back_e[i])
         
         for j in range(len(alignments[i])):
             al = alignments[i][j]
