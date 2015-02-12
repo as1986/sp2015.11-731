@@ -145,7 +145,7 @@ def output_record(recorded, epoch, great_epoch, theta, beta, prefix):
     with open(u'{}_epoch_{}_great_epoch_{}_theta_{}_beta_{}'.format(prefix, epoch, great_epoch, theta, beta), mode='w') as fh:
         for record in recorded:
             fh.write(u' '.join([unicode(x.most_common(1)[0][0]) for x in record])+u'\n')
-    with open(u'{}_epoch_{}_great_epoch_{}_theta_{}_beta_{}.save'.format(prefix, epoch, great_epoch, theta, beta), mode='w') as fh:
+    with open(u'{}_epoch_{}_great_epoch_{}_theta_{}_beta_{}.save'.format(prefix, epoch, great_epoch, theta, beta), mode='wb') as fh:
         cPickle.dump(recorded, fh, protocol=cPickle.HIGHEST_PROTOCOL)
 
 def load_split(fname):
