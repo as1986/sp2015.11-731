@@ -1,0 +1,3 @@
+[submodule "hw2/mtproject"]
+	path = hw2/mtproject
+	url = https://github.com/as1986/mtproject
