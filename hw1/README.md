@@ -1,3 +1,12 @@
+I implemented a Bayesian variant of IBM Model 2 with Dirichlet priors. I used Gibbs sampling from 3 independent chains.
+The first 10 samples are discarded and the rest 80 samples are collected. I ran Gibbs sampling on both de-en and en-de.
+I also implemented the `grow-diag` algorithm as described [here](http://www.statmt.org/moses/?n=FactoredTraining.AlignWords).
+`output.txt` contains the output from `grow_diag.py`.
+
+I was trying to split German words but the samples collected thus far do not seem have converged. So I am reporting the results
+from Model 2 (which is actually implemented in `model1.py`.)
+
+
 There are three Python programs here (`-h` for usage):
 
  - `./align` aligns words using Dice's coefficient.
