@@ -129,15 +129,6 @@ def main():
         y_good = layers_good[-1].h[-1]
         y_bad = layers_bad[-1].h[-1]
 
-        if predict:
-            predictor = theano([x], [y])
-            to_output = []
-            for (good, bad, ref) in test_sentences:
-                (emb_good, emb_bad, emb_ref) = (predictor(good), predictor(bad), predictor(ref))
-                to_output.append((emb_good, emb_bad, emb_ref))
-            save_model(to_output, 'predicted')
-            return
-
         cost_good = ((y_good - y) ** 2).sum()
         cost_bad = ((y_bad - y) ** 2).sum()
         cost = theano.tensor.max([0, 1 + cost_good - cost_bad]) + (params ** 2).sum()
@@ -159,6 +150,14 @@ def main():
                     print this_y
             save_model(layers, 'layers_round_{}'.format(round))
 
+        if predict:
+            predictor = theano([x], [y])
+            to_output = []
+            for (good, bad, ref) in test_sentences:
+                (emb_good, emb_bad, emb_ref) = (predictor(good), predictor(bad), predictor(ref))
+                to_output.append((emb_good, emb_bad, emb_ref))
+            save_model(to_output, 'predicted')
+            return
 
     prepare_nn(fname=opts.load_model, predict=opts.predict)
 
