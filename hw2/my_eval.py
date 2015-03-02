@@ -113,6 +113,7 @@ def main():
         ]
 
         params = []
+
         for layer in layers:
             params += layer.params
 
@@ -131,7 +132,12 @@ def main():
 
         cost_good = ((y_good - y) ** 2).sum()
         cost_bad = ((y_bad - y) ** 2).sum()
-        cost = theano.tensor.max([0, 1 + cost_good - cost_bad]) + (params ** 2).sum()
+
+        l2_loss = T.dscalar('l2_loss', dtype=T.config.floatX)
+        for p in params:
+            l2_loss += p * p
+        cost = theano.tensor.max([0, 1 + cost_good - cost_bad]) + l2_loss
+        
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
         train = theano.function([x, x_good, x_bad], [cost, y], updates=updates)
         for round in xrange(10):
