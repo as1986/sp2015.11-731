@@ -88,18 +88,21 @@ def main():
                 mtproject.deeplearning.layer.tProjection(n_words, e_dim),
                 mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
                 mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
+                mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
         ]
 
         layers_good = [ 
                 mtproject.deeplearning.layer.tProjection(orig=layers[0]),
                 mtproject.deeplearning.layer.LSTM(orig=layers[1]),
                 mtproject.deeplearning.layer.LSTM(orig=layers[2]),
+                mtproject.deeplearning.layer.LSTM(orig=layers[3]),
                 ]
 
         layers_bad = [ 
                 mtproject.deeplearning.layer.tProjection(orig=layers[0]),
                 mtproject.deeplearning.layer.LSTM(orig=layers[1]),
                 mtproject.deeplearning.layer.LSTM(orig=layers[2]),
+                mtproject.deeplearning.layer.LSTM(orig=layers[3]),
                 ]
 
         params = []
@@ -121,9 +124,9 @@ def main():
 
         cost_good = ((y_good - y) ** 2).sum()
         cost_bad = ((y_bad - y) ** 2).sum()
-        cost = - theano.tensor.max([0, 1 + cost_bad - cost_good])
+        cost = theano.tensor.max([0, 1 + cost_bad - cost_good])
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
-        train = theano.function([x, x_good, x_bad], cost, updates=updates)
+        train = theano.function([x, x_good, x_bad], [cost,y], updates=updates)
         for round in xrange(10):
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
@@ -133,7 +136,12 @@ def main():
                 good_example = chosen[0]
                 bad_example = chosen[1]
                 print 'idx: {}'.format(idx)
-                train(references[ref], good_example, bad_example)
+                this_cost, this_y = train(references[ref], good_example, bad_example)
+                if idx % 50 == 0:
+                    print 'this cost: {}'.format(this_cost)
+                    print 'this y: '
+                    print this_y
+            save_model(layers, 'layers_round_{}'.format(round))
 
 
                 
