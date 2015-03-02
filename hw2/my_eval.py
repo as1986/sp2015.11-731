@@ -9,6 +9,7 @@ import numpy as np
 import mtproject.deeplearning.layer
 from mtproject.deeplearning.learning_rule import *
 import mtproject.deeplearning.utils
+from random import choice
  
 # DRY
 def word_matches(h, ref):
@@ -24,7 +25,7 @@ def main():
     parser.add_argument('-n', '--num_sentences', default=None, type=int,
             help='Number of hypothesis pairs to evaluate')
     parser.add_argument('--labels', default='data/own-split.training.labels')
-    parser.add_argument('--save-every', default=50, type=int)
+    parser.add_argument('--save-every', default=1, type=int)
     # note that if x == [2, 3, 3], then x[:None] == x[:] == x (copy); no need for sys.maxint
     opts = parser.parse_args()
  
@@ -44,8 +45,7 @@ def main():
     # note: the -n option does not work in the original code
     from collections import defaultdict
     references = dict()
-    good = defaultdict(list)
-    bad = defaultdict(list)
+    pairs = dict()
     for (h1, h2, ref), label in islice(zip(sentences(), labels()), opts.num_sentences):
         vocab, loaded = load_sentences([h1, h2, ref], vocab)
         s1 = loaded[0]
@@ -57,12 +57,12 @@ def main():
         #        (0 if h1_match == h2_match
         #            else 1)) # \end{cases}
         references[ref] = np.asarray([sref,], dtype=np.int32)
+        if ref not in pairs:
+            pairs[ref] = []
         if label == -1:
-            good[ref].append(np.asarray([s1], dtype=np.int32))
-            bad[ref].append(theano.shared(s2))
+            pairs[ref].append((np.asarray([s1], dtype=np.int32), np.asarray([s2], dtype=np.int32)))
         elif label == 1:
-            bad[ref].append(theano.shared(s1))
-            good[ref].append(np.asarray([s2], dtype=np.int32))
+            pairs[ref].append((np.asarray([s2], dtype=np.int32), np.asarray([s1], dtype=np.int32)))
     
     def save_model(model, fname):
         import cPickle as pickle
@@ -79,48 +79,61 @@ def main():
 
     def prepare_nn():
         n_words = len(vocab)
-        e_dim = 25
+        e_dim = 100
         lstm_dim = 100
         x = T.imatrix('x')
+        x_good = T.imatrix('x_good')
+        x_bad = T.imatrix('x_bad')
         layers = [
                 mtproject.deeplearning.layer.tProjection(n_words, e_dim),
                 mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
+                mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
         ]
+
+        layers_good = [ 
+                mtproject.deeplearning.layer.tProjection(orig=layers[0]),
+                mtproject.deeplearning.layer.LSTM(orig=layers[1]),
+                mtproject.deeplearning.layer.LSTM(orig=layers[2]),
+                ]
+
+        layers_bad = [ 
+                mtproject.deeplearning.layer.tProjection(orig=layers[0]),
+                mtproject.deeplearning.layer.LSTM(orig=layers[1]),
+                mtproject.deeplearning.layer.LSTM(orig=layers[2]),
+                ]
 
         params = []
         for layer in layers:
             params += layer.params
 
-        for idx, layer in enumerate(layers):
+        for idx, (layer, layer_good, layer_bad) in enumerate(zip(layers, layers_good, layers_bad)):
             if idx == 0:
                 layer_out = layer.fprop(x)
+                layer_out_good = layer_good.fprop(x_good)
+                layer_out_bad = layer_bad.fprop(x_bad)
             else:
                 layer_out = layer.fprop(layer_out)
+                layer_out_good = layer_good.fprop(layer_out_good)
+                layer_out_bad = layer_bad.fprop(layer_out_bad)
         y = layers[-1].h[-1]
+        y_good = layers_good[-1].h[-1]
+        y_bad = layers_bad[-1].h[-1]
 
-        y_func = theano.function([x], y)
-        fixed_holder = T.matrix(dtype=theano.config.floatX)
-        cost = -((fixed_holder - y) ** 2).sum()
-        neg_cost = -cost
+        cost_good = ((y_good - y) ** 2).sum()
+        cost_bad = ((y_bad - y) ** 2).sum()
+        cost = - theano.tensor.max([0, 1 + cost_bad - cost_good])
+        updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
+        train = theano.function([x, x_good, x_bad], cost, updates=updates)
         for round in xrange(10):
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
-                if len(good[ref])==0:
+                if len(pairs[ref])==0:
                     continue
-                sref = references[ref]
-                # print sref.type
-                # print sref
-                target = y_func(sref)
-                updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
-                neg_updates = learning_rule(neg_cost, params, eps=1e-6, rho=0.65, method='adadelta')
+                chosen = choice(pairs[ref])
+                good_example = chosen[0]
+                bad_example = chosen[1]
                 print 'idx: {}'.format(idx)
-                train = theano.function([x], cost, updates=updates, givens=[(fixed_holder,target)])
-                for good_example in good[ref]:
-                    # print good_example.type
-                    train(good_example)
-                neg_train = theano.function([x], neg_cost, updates=neg_updates, givens=[(fixed_holder,target)])
-                for bad_example in bad[ref]:
-                    neg_train(bad_example)
+                train(references[ref], good_example, bad_example)
 
 
                 
