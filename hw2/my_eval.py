@@ -20,7 +20,7 @@ def main():
     parser.add_argument('-n', '--num_sentences', default=None, type=int,
                         help='Number of hypothesis pairs to evaluate')
     parser.add_argument('--labels', default='data/own-split.training.labels')
-    parser.add_argument('--test-file', default=None type=str)
+    parser.add_argument('--test-file', default=None, type=str)
     parser.add_argument('--save-every', default=1, type=int)
     parser.add_argument('--load-model', default=None, type=str)
     # note that if x == [2, 3, 3], then x[:None] == x[:] == x (copy); no need for sys.maxint
