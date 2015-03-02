@@ -23,6 +23,7 @@ def main():
     parser.add_argument('--test-file', default=None type=str)
     parser.add_argument('--save-every', default=1, type=int)
     parser.add_argument('--load-model', default=None, type=str)
+    parser.add_argument('--predict', action='store_true')
     # note that if x == [2, 3, 3], then x[:None] == x[:] == x (copy); no need for sys.maxint
     opts = parser.parse_args()
 
@@ -80,7 +81,7 @@ def main():
         f.close()
         return to_return
 
-    def prepare_nn(fname=None):
+    def prepare_nn(fname=None, predict=False):
         n_words = len(vocab)
         e_dim = 100
         lstm_dim = 100
@@ -128,9 +129,18 @@ def main():
         y_good = layers_good[-1].h[-1]
         y_bad = layers_bad[-1].h[-1]
 
+        if predict:
+            predictor = theano([x], [y])
+            to_output = []
+            for (good, bad, ref) in test_sentences:
+                (emb_good, emb_bad, emb_ref) = (predictor(good), predictor(bad), predictor(ref))
+                to_output.append((emb_good, emb_bad, emb_ref))
+            save_model(to_output, 'predicted')
+            return
+
         cost_good = ((y_good - y) ** 2).sum()
         cost_bad = ((y_bad - y) ** 2).sum()
-        cost = theano.tensor.max([0, 1 + cost_good - cost_bad])
+        cost = theano.tensor.max([0, 1 + cost_good - cost_bad]) + (params ** 2).sum()
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
         train = theano.function([x, x_good, x_bad], [cost, y], updates=updates)
         for round in xrange(10):
@@ -150,7 +160,7 @@ def main():
             save_model(layers, 'layers_round_{}'.format(round))
 
 
-    prepare_nn(opts.load_model)
+    prepare_nn(fname=opts.load_model, predict=opts.predict)
 
 
 # convention to allow import of this file as a module
