@@ -135,7 +135,7 @@ def main():
 
         l2_loss = T.dscalar('l2_loss')
         for p in params:
-            l2_loss += p * p
+            l2_loss += (p ** 2).sum()
         cost = theano.tensor.max([0, 1 + cost_good - cost_bad]) + l2_loss
 
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
