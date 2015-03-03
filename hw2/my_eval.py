@@ -82,21 +82,45 @@ def main():
         return to_return
 
     def prepare_nn(fname=None, predict=False):
+
         n_words = len(vocab)
         e_dim = 100
         lstm_dim = 100
         x = T.imatrix('x')
         x_good = T.imatrix('x_good')
         x_bad = T.imatrix('x_bad')
+
+        layers = [
+            mtproject.deeplearning.layer.tProjection(n_words, e_dim),
+            mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
+            mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
+            mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
+        ]
         if fname is not None:
-            layers = load_model(fname)
-        else:
-            layers = [
-                mtproject.deeplearning.layer.tProjection(n_words, e_dim),
-                mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
-                mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
-                mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
-            ]
+            print 'loading model...'
+            old_layers = load_model(fname)
+            layers[0].copy_constructor(orig=old_layers[0])
+            layers[1].copy_constructor(orig=old_layers[1])
+            layers[2].copy_constructor(orig=old_layers[2])
+            layers[3].copy_constructor(orig=old_layers[3])
+
+        if predict:
+            print 'predicting...'
+            for idx, layer in enumerate(layers):
+                if idx == 0:
+                    layer_out = layer.fprop(x)
+                else:
+                    layer_out = layer.fprop(layer_out)
+
+            y = layers[-1].h[-1]
+            predictor = theano.function([x], y)
+            to_output = []
+            for (good, bad, ref) in test_sentences:
+                (emb_good, emb_bad, emb_ref) = (predictor([good]), predictor([bad]), predictor([ref]))
+                to_output.append((emb_good, emb_bad, emb_ref))
+            save_model(to_output, 'predicted')
+            return
+
 
         layers_good = [
             mtproject.deeplearning.layer.tProjection(orig=layers[0]),
@@ -130,6 +154,7 @@ def main():
         y_good = layers_good[-1].h[-1]
         y_bad = layers_bad[-1].h[-1]
 
+
         cost_good = ((y_good - y) ** 2).sum()
         cost_bad = ((y_bad - y) ** 2).sum()
 
@@ -139,7 +164,7 @@ def main():
 
         # L2
         for p in params:
-            cost += (p ** 2).sum()
+            cost += 1e-4 * (p ** 2).sum()
 
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
         train = theano.function([x, x_good, x_bad], [cost, y], updates=updates)
@@ -159,14 +184,7 @@ def main():
                     print this_y
             save_model(layers, 'layers_round_{}'.format(round))
 
-        if predict:
-            predictor = theano([x], [y])
-            to_output = []
-            for (good, bad, ref) in test_sentences:
-                (emb_good, emb_bad, emb_ref) = (predictor(good), predictor(bad), predictor(ref))
-                to_output.append((emb_good, emb_bad, emb_ref))
-            save_model(to_output, 'predicted')
-            return
+
 
     prepare_nn(fname=opts.load_model, predict=opts.predict)
 
