@@ -25,11 +25,12 @@ def main():
     predictions = pickle.load(f)
     f.close()
 
-    for (h1, h2, ref) in zip(predictions, labels):
-        assert len(h1) == 1 and len(h2) == 1 and len(ref) == 1
-        combined_array = h1[0] + h2[0] + ref[0]
+    assert len(labels)==len(predictions)
+    for (pred, label) in zip(predictions, labels):
+        assert len(pred[0]) == 1 and len(pred[1]) == 1 and len(pred[2]) == 1
+        combined_array = np.hstack([pred[0][0], pred[1][0], pred[2][0]])
         output = u' '.join([u'{}: {}'.format(idx + 1, x) for idx, x in enumerate(combined_array)])
-        print u'{} {}'.format(labels, output)
+        print u'{} {}'.format(label, output)
 
 
 if __name__ == '__main__':

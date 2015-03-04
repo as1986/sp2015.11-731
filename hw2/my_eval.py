@@ -185,7 +185,7 @@ def main():
                 print 'idx: {}'.format(idx)
                 random_sample = np.random.permutation(references[ref])
                 if len(pairs[ref]) == 0:
-                    this_cost, this_y = train(references[ref], random_sample)
+                    this_cost, this_y = unsupervised_train(references[ref], random_sample)
                 else:
                     chosen = choice(pairs[ref])
                     good_example = chosen[0]
