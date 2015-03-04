@@ -167,7 +167,7 @@ def main():
         cost_bad = ((y_bad - y) ** 2).sum()
         cost_sane = ((y_sane - y) ** 2).sum()
 
-        sane_cost = theano.tensor.max([0, 0.25 - cost_sane])
+        sane_cost = theano.tensor.max([0, 2 - cost_sane])
 
         cost = theano.tensor.max([0, 1 + cost_good - cost_bad]) + sane_cost
 
@@ -176,17 +176,21 @@ def main():
             cost += 1e-4 * (p ** 2).sum()
 
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
-        train = theano.function([x, x_good, x_bad], [cost, y], updates=updates)
+        train = theano.function([x, x_good, x_bad, x_sane], [cost, y], updates=updates)
+        unsupervised_train = theano.function([x, x_sane], [cost, y], updates=updates,
+                                             givens=[(cost, 0.)])
         for round in xrange(10):
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
-                if len(pairs[ref]) == 0:
-                    continue
-                chosen = choice(pairs[ref])
-                good_example = chosen[0]
-                bad_example = chosen[1]
                 print 'idx: {}'.format(idx)
-                this_cost, this_y = train(references[ref], good_example, bad_example)
+                random_sample = np.random.permutation(references[ref])
+                if len(pairs[ref]) == 0:
+                    this_cost, this_y = train(references[ref], random_sample)
+                else:
+                    chosen = choice(pairs[ref])
+                    good_example = chosen[0]
+                    bad_example = chosen[1]
+                    this_cost, this_y = train(references[ref], good_example, bad_example, random_sample)
                 if idx % 50 == 0:
                     print 'this cost: {}'.format(this_cost)
                     print 'this y: '
