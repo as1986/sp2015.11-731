@@ -174,12 +174,13 @@ def main():
 
         cost_good = ((y_good - y) ** 2).sum()
         cost_bad = ((y_bad - y) ** 2).sum()
+        cost_good_to_bad = ((y_good - y_bad) ** 2).sum()
         cost_sane = ((y_sane - y) ** 2).sum()
 
-        sane_cost = theano.tensor.max([0, 2 - cost_sane])
+        cost_other_trans = theano.tensor.max([0, 2 - cost_sane])
 
-        cost_good_bad = theano.tensor.max([0, 1 + cost_good - cost_bad])
-        cost = cost_good_bad + sane_cost
+        cost_hypotheses = theano.tensor.max([0, 1 + cost_good - cost_bad]) + theano.tensor.max([0, 1 - cost_good_to_bad])
+        cost = cost_hypotheses + cost_other_trans
 
         # L2
         for p in params:
@@ -187,14 +188,17 @@ def main():
 
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
 
-        train = theano.function([x, x_good, x_bad, x_sane], [cost_good_bad, y], updates=updates)
-        sane_updates = learning_rule(sane_cost, params, eps=1e-6, rho=0.65, method='adadelta')
-        unsupervised_train = theano.function([x, x_sane], [sane_cost, y], updates=sane_updates, on_unused_input='warn')
-        for round in xrange(10):
+        train = theano.function([x, x_good, x_bad, x_sane], [cost, y], updates=updates)
+        sane_updates = learning_rule(cost_other_trans, params, eps=1e-6, rho=0.65, method='adadelta')
+        unsupervised_train = theano.function([x, x_sane], [cost_other_trans, y], updates=sane_updates, on_unused_input='warn')
+        for round in xrange(20):
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
                 print 'idx: {}'.format(idx)
-                random_sample = np.random.permutation(references[ref])
+                random_ref = choice(reference.keys())
+                while random_sample == ref:
+                    random_ref = choice(reference.keys())
+                random_sample = references[random_ref]
                 if len(pairs[ref]) == 0:
                     this_cost, this_y = unsupervised_train(references[ref], random_sample)
                 else:
