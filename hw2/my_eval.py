@@ -186,9 +186,10 @@ def main():
             cost += 1e-4 * (p ** 2).sum()
 
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
-        train = theano.function([x, x_good, x_bad, x_sane], [cost, y], updates=updates)
-        unsupervised_train = theano.function([x, x_sane], [cost, y], updates=updates,
-                                             givens=[(cost_good_bad, np.float32(0.))], on_unused_input='warn')
+
+        train = theano.function([x, x_good, x_bad, x_sane], [cost_good_bad, y], updates=updates)
+        sane_updates = learning_rule(sane_cost, params, eps=1e-6, rho=0.65, method='adadelta')
+        unsupervised_train = theano.function([x, x_sane], [sane_cost, y], updates=sane_updates, on_unused_input='warn')
         for round in xrange(10):
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
