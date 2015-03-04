@@ -31,11 +31,13 @@ def main():
             for pair in f:
                 # yield [sentence.strip().split() for sentence in pair.split(u' ||| ')]
                 yield pair.split(u' ||| ')
+            yield ['', '', '']
 
     def labels():
         with open(opts.labels, encoding='utf-8', mode='r') as label_fh:
             for label in label_fh:
                 yield int(label.strip())
+            yield None
 
     vocab = dict()
     test_sentences = []
@@ -47,6 +49,9 @@ def main():
     references = dict()
     pairs = dict()
     for (h1, h2, ref), label in islice(zip(sentences(opts.input), labels()), opts.num_sentences):
+        if len(ref) == 0:
+            # no more sentences
+            raise Exception('more sentences than labels!')
         vocab, loaded = load_sentences([h1, h2, ref], vocab)
         s1 = loaded[0]
         s2 = loaded[1]
@@ -56,10 +61,13 @@ def main():
         # print(-1 if h1_match > h2_match else # \begin{cases}
         # (0 if h1_match == h2_match
         # else 1)) # \end{cases}
-        references[ref] = np.asarray([sref, ], dtype=np.int32)
+        references[ref] = np.asarray([sref], dtype=np.int32)
         if ref not in pairs:
             pairs[ref] = []
-        if label == -1:
+        if label is None:
+            # TODO basically ignore the test data now
+            continue
+        elif label == -1:
             pairs[ref].append((np.asarray([s1], dtype=np.int32), np.asarray([s2], dtype=np.int32)))
         elif label == 1:
             pairs[ref].append((np.asarray([s2], dtype=np.int32), np.asarray([s1], dtype=np.int32)))
@@ -178,7 +186,7 @@ def main():
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
         train = theano.function([x, x_good, x_bad, x_sane], [cost, y], updates=updates)
         unsupervised_train = theano.function([x, x_sane], [cost, y], updates=updates,
-                                             givens=[(cost, 0.)])
+                                             givens=[(cost, np.float32(0.))])
         for round in xrange(10):
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
