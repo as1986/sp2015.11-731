@@ -51,6 +51,7 @@ def main():
     for (h1, h2, ref), label in islice(zip(sentences(opts.input), labels()), opts.num_sentences):
         if len(ref) == 0:
             # no more sentences
+            print 'h1: {}, h2: {} label: '.format(h1, h2, label)
             raise Exception('more sentences than labels!')
         vocab, loaded = load_sentences([h1, h2, ref], vocab)
         s1 = loaded[0]
@@ -177,7 +178,8 @@ def main():
 
         sane_cost = theano.tensor.max([0, 2 - cost_sane])
 
-        cost = theano.tensor.max([0, 1 + cost_good - cost_bad]) + sane_cost
+        cost_good_bad = theano.tensor.max([0, 1 + cost_good - cost_bad])
+        cost = cost_good_bad + sane_cost
 
         # L2
         for p in params:
@@ -186,7 +188,7 @@ def main():
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
         train = theano.function([x, x_good, x_bad, x_sane], [cost, y], updates=updates)
         unsupervised_train = theano.function([x, x_sane], [cost, y], updates=updates,
-                                             givens=[(cost, np.float32(0.))])
+                                             givens=[(cost_good_bad, np.float32(0.))], on_unused_input='warn')
         for round in xrange(10):
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
