@@ -1,15 +1,13 @@
 #!/usr/bin/env python
 import argparse  # optparse is deprecated
 from itertools import islice  # slicing for iterators
-from mtproject.toy import load_sentences
 from io import open
-import theano.tensor as T
-import theano
-import numpy as np
+from random import choice
+
+from mtproject.toy import load_sentences
 import mtproject.deeplearning.layer
 from mtproject.deeplearning.learning_rule import *
 import mtproject.deeplearning.utils
-from random import choice
 
 
 def main():
@@ -23,7 +21,7 @@ def main():
     parser.add_argument('--test-file', default=None, type=str)
     parser.add_argument('--save-every', default=1, type=int)
     parser.add_argument('--load-model', default=None, type=str)
-    parser.add_argument('--predict', action='store_true')
+    parser.add_argument('--predict', default=None, type=str)
     # note that if x == [2, 3, 3], then x[:None] == x[:] == x (copy); no need for sys.maxint
     opts = parser.parse_args()
 
@@ -57,7 +55,7 @@ def main():
         # h2_match = word_matches(s2, rset)
         # print(-1 if h1_match > h2_match else # \begin{cases}
         # (0 if h1_match == h2_match
-        #            else 1)) # \end{cases}
+        # else 1)) # \end{cases}
         references[ref] = np.asarray([sref, ], dtype=np.int32)
         if ref not in pairs:
             pairs[ref] = []
@@ -81,7 +79,7 @@ def main():
         f.close()
         return to_return
 
-    def prepare_nn(fname=None, predict=False):
+    def prepare_nn(fname=None, predict_fname=None):
 
         n_words = len(vocab)
         e_dim = 100
@@ -89,6 +87,7 @@ def main():
         x = T.imatrix('x')
         x_good = T.imatrix('x_good')
         x_bad = T.imatrix('x_bad')
+        x_sane = T.imatrix('x_sane')
 
         layers = [
             mtproject.deeplearning.layer.tProjection(n_words, e_dim),
@@ -104,7 +103,7 @@ def main():
             layers[2].copy_constructor(orig=old_layers[2])
             layers[3].copy_constructor(orig=old_layers[3])
 
-        if predict:
+        if predict_fname is not None:
             print 'predicting...'
             for idx, layer in enumerate(layers):
                 if idx == 0:
@@ -118,9 +117,8 @@ def main():
             for (good, bad, ref) in test_sentences:
                 (emb_good, emb_bad, emb_ref) = (predictor([good]), predictor([bad]), predictor([ref]))
                 to_output.append((emb_good, emb_bad, emb_ref))
-            save_model(to_output, 'predicted')
+            save_model(to_output, predict_fname)
             return
-
 
         layers_good = [
             mtproject.deeplearning.layer.tProjection(orig=layers[0]),
@@ -136,31 +134,42 @@ def main():
             mtproject.deeplearning.layer.LSTM(orig=layers[3]),
         ]
 
+        layers_sane = [
+            mtproject.deeplearning.layer.tProjection(orig=layers[0]),
+            mtproject.deeplearning.layer.LSTM(orig=layers[1]),
+            mtproject.deeplearning.layer.LSTM(orig=layers[2]),
+            mtproject.deeplearning.layer.LSTM(orig=layers[3]),
+        ]
+
         params = []
 
         for layer in layers:
             params += layer.params
 
-        for idx, (layer, layer_good, layer_bad) in enumerate(zip(layers, layers_good, layers_bad)):
+        for idx, (layer, layer_good, layer_bad, layer_sane) in enumerate(
+                zip(layers, layers_good, layers_bad, layers_sane)):
             if idx == 0:
                 layer_out = layer.fprop(x)
                 layer_out_good = layer_good.fprop(x_good)
                 layer_out_bad = layer_bad.fprop(x_bad)
+                layer_out_sane = layer_sane.fprop(x_sane)
             else:
                 layer_out = layer.fprop(layer_out)
                 layer_out_good = layer_good.fprop(layer_out_good)
                 layer_out_bad = layer_bad.fprop(layer_out_bad)
+                layer_out_sane = layer_sane.fprop(layer_out_sane)
         y = layers[-1].h[-1]
         y_good = layers_good[-1].h[-1]
         y_bad = layers_bad[-1].h[-1]
-
+        y_sane = layers_sane[-1].h[-1]
 
         cost_good = ((y_good - y) ** 2).sum()
         cost_bad = ((y_bad - y) ** 2).sum()
+        cost_sane = ((y_sane - y) ** 2).sum()
 
+        sane_cost = theano.tensor.max([0, 0.25 - cost_sane])
 
-
-        cost = theano.tensor.max([0, 1 + cost_good - cost_bad])
+        cost = theano.tensor.max([0, 1 + cost_good - cost_bad]) + sane_cost
 
         # L2
         for p in params:
@@ -185,8 +194,7 @@ def main():
             save_model(layers, 'layers_round_{}'.format(round))
 
 
-
-    prepare_nn(fname=opts.load_model, predict=opts.predict)
+    prepare_nn(fname=opts.load_model, predict_fname=opts.predict)
 
 
 # convention to allow import of this file as a module
