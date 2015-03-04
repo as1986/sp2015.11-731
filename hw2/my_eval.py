@@ -186,7 +186,7 @@ def main():
         updates = learning_rule(cost, params, eps=1e-6, rho=0.65, method='adadelta')
         train = theano.function([x, x_good, x_bad, x_sane], [cost, y], updates=updates)
         unsupervised_train = theano.function([x, x_sane], [cost, y], updates=updates,
-                                             givens=[(cost, 0.)])
+                                             givens=[(cost, np.float32(0.))])
         for round in xrange(10):
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
