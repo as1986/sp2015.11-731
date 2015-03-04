@@ -26,59 +26,59 @@ def main():
     opts = parser.parse_args()
 
     # we create a generator and avoid loading all sentences into a list
-    def sentences(fname):
+    def sentences(fname, infinite=False):
         with open(fname, encoding='utf-8', mode='r') as f:
             for pair in f:
                 # yield [sentence.strip().split() for sentence in pair.split(u' ||| ')]
                 yield pair.split(u' ||| ')
-        while True:
-            yield ['', '', '']
+        if infinite:
+            while True:
+                yield ['', '', '']
 
-    def labels():
+    def labels(infinite=False):
         with open(opts.labels, encoding='utf-8', mode='r') as label_fh:
             for label in label_fh:
                 yield int(label.strip())
-        while True:
-            yield None
+        if infinite:
+            while True:
+                yield None
 
     vocab = dict()
     test_sentences = []
     if opts.test_file is not None:
+        print 'loading test file {}'.format(opts.test_file)
         for (h1, h2, ref) in sentences(opts.test_file):
             vocab, loaded = load_sentences([h1, h2, ref], vocab)
             test_sentences.append((loaded[0], loaded[1], loaded[2]))
 
-    references = dict()
-    pairs = dict()
-    for (h1, h2, ref), label in islice(zip(sentences(opts.input), labels()), opts.num_sentences):
-        if len(ref) == 0:
-            # no more sentences
-            print 'h1: {}, h2: {} label: '.format(h1, h2, label)
-            raise Exception('more sentences than labels!')
-        vocab, loaded = load_sentences([h1, h2, ref], vocab)
-        s1 = loaded[0]
-        s2 = loaded[1]
-        sref = loaded[2]
-        # h1_match = word_matches(s1, rset)
-        # h2_match = word_matches(s2, rset)
-        # print(-1 if h1_match > h2_match else # \begin{cases}
-        # (0 if h1_match == h2_match
-        # else 1)) # \end{cases}
-        references[ref] = np.asarray([sref], dtype=np.int32)
-        if ref not in pairs:
-            pairs[ref] = []
-        if label is None:
-            # TODO basically ignore the test data now
-            continue
-        elif label == -1:
-            pairs[ref].append((np.asarray([s1], dtype=np.int32), np.asarray([s2], dtype=np.int32)))
-        elif label == 1:
-            pairs[ref].append((np.asarray([s2], dtype=np.int32), np.asarray([s1], dtype=np.int32)))
-
+    else:
+        references = dict()
+        pairs = dict()
+        for (h1, h2, ref), label in islice(zip(sentences(opts.input, infinite=True), labels(infinite=True)), opts.num_sentences):
+            if len(ref) == 0:
+                # no more sentences
+                print 'h1: {}, h2: {} label: '.format(h1, h2, label)
+                raise Exception('more sentences than labels!')
+            vocab, loaded = load_sentences([h1, h2, ref], vocab)
+            s1 = loaded[0]
+            s2 = loaded[1]
+            sref = loaded[2]
+            references[ref] = np.asarray([sref], dtype=np.int32)
+            if ref not in pairs:
+                pairs[ref] = []
+            if label is None:
+                # TODO basically ignore the test data now
+                continue
+            elif label == -1:
+                pairs[ref].append((np.asarray([s1], dtype=np.int32), np.asarray([s2], dtype=np.int32)))
+            elif label == 1:
+                pairs[ref].append((np.asarray([s2], dtype=np.int32), np.asarray([s1], dtype=np.int32)))
+    
     def save_model(model, fname):
         import cPickle as pickle
 
         f = file(fname, 'wb')
+        print 'saving to file {}'.format(fname)
         pickle.dump(model, f, protocol=pickle.HIGHEST_PROTOCOL)
         f.close()
 
@@ -91,6 +91,7 @@ def main():
         return to_return
 
     def prepare_nn(fname=None, predict_fname=None):
+        print 'preparing nn...'
 
         n_words = len(vocab)
         e_dim = 100
@@ -125,7 +126,8 @@ def main():
             y = layers[-1].h[-1]
             predictor = theano.function([x], y)
             to_output = []
-            for (good, bad, ref) in test_sentences:
+            for idx, (good, bad, ref) in enumerate(test_sentences):
+                print 'idx: {}'.format(idx)
                 (emb_good, emb_bad, emb_ref) = (predictor([good]), predictor([bad]), predictor([ref]))
                 to_output.append((emb_good, emb_bad, emb_ref))
             save_model(to_output, predict_fname)
