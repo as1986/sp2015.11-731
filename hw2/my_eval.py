@@ -15,7 +15,7 @@ def main():
     # PEP8: use ' and not " for strings
     parser.add_argument('-i', '--input', default='data/train-test.hyp1-hyp2-ref',
                         help='input file (default data/train-test.hyp1-hyp2-ref)')
-    parser.add_argument('-n', '--num_sentences', default=None, type=int,
+    parser.add_argument('-n', '--num_sentences', default=2000, type=int,
                         help='Number of hypothesis pairs to evaluate')
     parser.add_argument('--labels', default='data/own-split.training.labels')
     parser.add_argument('--test-file', default=None, type=str)
@@ -31,12 +31,14 @@ def main():
             for pair in f:
                 # yield [sentence.strip().split() for sentence in pair.split(u' ||| ')]
                 yield pair.split(u' ||| ')
+        while True:
             yield ['', '', '']
 
     def labels():
         with open(opts.labels, encoding='utf-8', mode='r') as label_fh:
             for label in label_fh:
                 yield int(label.strip())
+        while True:
             yield None
 
     vocab = dict()
@@ -179,7 +181,8 @@ def main():
 
         cost_other_trans = theano.tensor.max([0, 2 - cost_sane])
 
-        cost_hypotheses = theano.tensor.max([0, 1 + cost_good - cost_bad]) + theano.tensor.max([0, 1 - cost_good_to_bad])
+        cost_hypotheses = theano.tensor.max([0, 1 + cost_good - cost_bad]) + theano.tensor.max(
+            [0, 1 - cost_good_to_bad])
         cost = cost_hypotheses + cost_other_trans
 
         # L2
@@ -190,7 +193,8 @@ def main():
 
         train = theano.function([x, x_good, x_bad, x_sane], [cost, y], updates=updates)
         sane_updates = learning_rule(cost_other_trans, params, eps=1e-6, rho=0.65, method='adadelta')
-        unsupervised_train = theano.function([x, x_sane], [cost_other_trans, y], updates=sane_updates, on_unused_input='warn')
+        unsupervised_train = theano.function([x, x_sane], [cost_other_trans, y], updates=sane_updates,
+                                             on_unused_input='warn')
         for round in xrange(20):
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
