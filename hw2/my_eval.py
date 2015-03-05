@@ -22,8 +22,22 @@ def main():
     parser.add_argument('--save-every', default=1, type=int)
     parser.add_argument('--load-model', default=None, type=str)
     parser.add_argument('--predict', default=None, type=str)
+    parser.add_argument('--embeddings', default='data/w2v_model', type=str)
     # note that if x == [2, 3, 3], then x[:None] == x[:] == x (copy); no need for sys.maxint
     opts = parser.parse_args()
+
+    def load_embeddings(fname):
+        import gensim
+
+        to_return = gensim.models.Word2Vec.load(fname)
+        return to_return
+
+    def prepare_shared_embeddings(vocab, model):
+        assert isinstance(vocab, dict)
+        to_return = np.zeros((len(vocab) + 1, 100), dtype=np.float32)
+        for k, v in vocab.iteritems():
+            to_return[v] = model[k.lower]
+        return mtproject.deeplearning.layer.create_shared(to_return)
 
     # we create a generator and avoid loading all sentences into a list
     def sentences(fname, infinite=False):
@@ -54,7 +68,8 @@ def main():
     else:
         references = dict()
         pairs = dict()
-        for (h1, h2, ref), label in islice(zip(sentences(opts.input, infinite=True), labels(infinite=True)), opts.num_sentences):
+        for (h1, h2, ref), label in islice(zip(sentences(opts.input, infinite=True), labels(infinite=True)),
+                                           opts.num_sentences):
             if len(ref) == 0:
                 # no more sentences
                 print 'h1: {}, h2: {} label: '.format(h1, h2, label)
@@ -73,7 +88,7 @@ def main():
                 pairs[ref].append((np.asarray([s1], dtype=np.int32), np.asarray([s2], dtype=np.int32)))
             elif label == 1:
                 pairs[ref].append((np.asarray([s2], dtype=np.int32), np.asarray([s1], dtype=np.int32)))
-    
+
     def save_model(model, fname):
         import cPickle as pickle
 
@@ -90,7 +105,7 @@ def main():
         f.close()
         return to_return
 
-    def prepare_nn(fname=None, predict_fname=None):
+    def prepare_nn(fname=None, predict_fname=None, shared_embeddings=None):
         print 'preparing nn...'
 
         n_words = len(vocab)
@@ -102,7 +117,9 @@ def main():
         x_sane = T.imatrix('x_sane')
 
         layers = [
-            mtproject.deeplearning.layer.tProjection(n_words, e_dim),
+            mtproject.deeplearning.layer.tProjection(n_words,
+                                                     e_dim) if shared_embeddings is none else mtproject.deeplearning.layer.tProjection(
+                n_words, e_dim, embedding=shared_embeddings),
             mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
             mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
             mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
@@ -218,8 +235,9 @@ def main():
                     print this_y
             save_model(layers, 'layers_round_{}'.format(round))
 
-
-    prepare_nn(fname=opts.load_model, predict_fname=opts.predict)
+    embeddings = load_embeddings(opts.embeddings)
+    shared = prepare_shared_embeddings(vocab, model=embeddings)
+    prepare_nn(fname=opts.load_model, predict_fname=opts.predict, shared_embeddings=shared)
 
 
 # convention to allow import of this file as a module
