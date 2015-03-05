@@ -16,10 +16,10 @@ def get_ngrams(sentence, n=1):
     return to_return
 
 def get_precision(h, ref):
-    return float(len(h&ref)) / len(h)
+    return float(len(h&ref)+1e-5) / (len(h)+1e-5)
 
 def get_recall(h, ref):
-    return float(len(h&ref)) / len(ref)
+    return float(len(h&ref)+1e-5) / (len(ref)+1e-5)
 
 def f(precision, recall):
     sum = precision + recall
@@ -43,24 +43,26 @@ def main():
                 yield ['', '', '']
 
     to_save = []
-    for (h1, h2, ref) in sentences(args.infile):
+    vocab = dict()
+    for (s1, s2, sref) in sentences(args.infile):
+        vocab, (h1,h2,ref) = load_sentences([s1,s2,sref], using_vocab=vocab)
         # unigrams = [get_ngrams(h1, 1), get_ngrams(h2, 1), get_ngrams(ref, 1)]
         bigrams = [get_ngrams(h1, 2), get_ngrams(h2, 2), get_ngrams(ref, 2)]
         trigrams = [get_ngrams(h1, 3), get_ngrams(h2, 3), get_ngrams(ref, 3)]
-        h1_precision = get_precision(bigrams[0] + trigrams[0], bigrams[2] + trigrams[2])
-        h2_precision = get_precision(bigrams[1] + trigrams[1], bigrams[2] + trigrams[2])
-        h1_recall = get_recall(bigrams[0] + trigrams[0], bigrams[2] + trigrams[2])
-        h2_recall = get_recall(bigrams[1] + trigrams[1], bigrams[2] + trigrams[2])
+        h1_precision = get_precision(bigrams[0] | trigrams[0], bigrams[2] | trigrams[2])
+        h2_precision = get_precision(bigrams[1] | trigrams[1], bigrams[2] | trigrams[2])
+        h1_recall = get_recall(bigrams[0] | trigrams[0], bigrams[2] | trigrams[2])
+        h2_recall = get_recall(bigrams[1] | trigrams[1], bigrams[2] | trigrams[2])
         h1_f = f(h1_precision,h1_recall)
         h2_f = f(h2_precision,h2_recall)
-        each = np.asarray([[[h1_precision, h1_recall, h1_f]], [[h2_precision, h2_recall, h2_f]], [[len(ref)]]], dtype=np.float64)
+        each = np.asarray([[[h1_precision, h1_recall, h1_f]], [[h2_precision, h2_recall, h2_f]], [[len(ref)]]])
         to_save.append(each)
 
     import cPickle as pickle
-    f = file(args.outfile, 'wb')
+    output = file(args.outfile, 'wb')
     print 'saving to file {}'.format(args.outfile)
-    pickle.dump(to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
-    f.close()
+    pickle.dump(to_save, output, protocol=pickle.HIGHEST_PROTOCOL)
+    output.close()
 
 if __name__ == '__main__':
     main()

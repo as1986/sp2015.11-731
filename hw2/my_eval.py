@@ -2,7 +2,7 @@
 import argparse  # optparse is deprecated
 from itertools import islice  # slicing for iterators
 from io import open
-from random import choice
+from random import choice, shuffle
 
 from mtproject.toy import load_sentences
 import mtproject.deeplearning.layer
@@ -45,7 +45,6 @@ def main():
             for pair in f:
                 # yield [sentence.strip().split() for sentence in pair.split(u' ||| ')]
                 yield pair.split(u' ||| ')
-            yield ['', '', '']
 
     def labels(infinite=False):
         with open(opts.labels, encoding='utf-8', mode='r') as label_fh:
@@ -65,32 +64,31 @@ def main():
             vocab, loaded = load_sentences([h1, h2, ref], vocab)
             test_sentences.append((loaded[0], loaded[1], loaded[2]))
 
-    else:
-        references = dict()
-        pairs = dict()
-        idx = 0
-        for (h1, h2, ref), label in islice(zip(sentences(opts.input, infinite=True), labels(infinite=True)),
-                                           opts.num_sentences):
-            if len(ref) == 0:
-                # no more sentences
-                print 'h1: {}, h2: {} label: '.format(h1, h2, label)
-                raise Exception('more sentences than labels!')
-            print 'idx: {}'.format(idx)
-            idx += 1
-            vocab, loaded = load_sentences([h1, h2, ref], vocab)
-            s1 = loaded[0]
-            s2 = loaded[1]
-            sref = loaded[2]
-            references[ref] = np.asarray([sref], dtype=np.int32)
-            if ref not in pairs:
-                pairs[ref] = []
-            if label is None:
-                # TODO basically ignore the test data now
-                continue
-            elif label == -1:
-                pairs[ref].append((np.asarray([s1], dtype=np.int32), np.asarray([s2], dtype=np.int32)))
-            elif label == 1:
-                pairs[ref].append((np.asarray([s2], dtype=np.int32), np.asarray([s1], dtype=np.int32)))
+    references = dict()
+    pairs = dict()
+    idx = 0
+    for (h1, h2, ref), label in islice(zip(sentences(opts.input, infinite=True), labels(infinite=True)),
+                                       opts.num_sentences):
+        if len(ref) == 0:
+            # no more sentences
+            print 'h1: {}, h2: {} label: '.format(h1, h2, label)
+            raise Exception('more sentences than labels!')
+        print 'idx: {}'.format(idx)
+        idx += 1
+        vocab, loaded = load_sentences([h1, h2, ref], vocab)
+        s1 = loaded[0]
+        s2 = loaded[1]
+        sref = loaded[2]
+        references[ref] = np.asarray([sref], dtype=np.int32)
+        if ref not in pairs:
+            pairs[ref] = []
+        if label is None:
+            # TODO basically ignore the test data now
+            continue
+        elif label == -1:
+            pairs[ref].append((np.asarray([s1], dtype=np.int32), np.asarray([s2], dtype=np.int32)))
+        elif label == 1:
+            pairs[ref].append((np.asarray([s2], dtype=np.int32), np.asarray([s1], dtype=np.int32)))
 
     def save_model(model, fname):
         import cPickle as pickle
@@ -110,9 +108,10 @@ def main():
 
     def prepare_nn(fname=None, predict_fname=None, shared_embeddings=None):
         print 'preparing nn...'
+        if shared_embeddings is not None:
+            print 'embeddings: {} {}'.format(len(shared_embeddings), len(shared_embeddings[0]))
 
         n_words = len(vocab)
-        emb_dim = 300
         e_dim = 100
         lstm_dim = 100
         x = T.imatrix('x')
@@ -132,27 +131,12 @@ def main():
             print 'loading model...'
             old_layers = load_model(fname)
             layers[0].copy_constructor(orig=old_layers[0])
+            # TODO hacky
+            layers[0].set_embeddings(shared_embeddings)
             layers[1].copy_constructor(orig=old_layers[1])
             layers[2].copy_constructor(orig=old_layers[2])
             layers[3].copy_constructor(orig=old_layers[3])
 
-        if predict_fname is not None:
-            print 'predicting...'
-            for idx, layer in enumerate(layers):
-                if idx == 0:
-                    layer_out = layer.fprop(x)
-                else:
-                    layer_out = layer.fprop(layer_out)
-
-            y = layers[-1].h[-1]
-            predictor = theano.function([x], y)
-            to_output = []
-            for idx, (good, bad, ref) in enumerate(test_sentences):
-                print 'idx: {}'.format(idx)
-                (emb_good, emb_bad, emb_ref) = (predictor([good]), predictor([bad]), predictor([ref]))
-                to_output.append((emb_good, emb_bad, emb_ref))
-            save_model(to_output, predict_fname)
-            return
 
         layers_good = [
             mtproject.deeplearning.layer.tProjection(orig=layers[0]),
@@ -197,10 +181,11 @@ def main():
         y_bad = layers_bad[-1].h[-1]
         y_sane = layers_sane[-1].h[-1]
 
-        cost_good = ((y_good - y) ** 2).sum()
-        cost_bad = ((y_bad - y) ** 2).sum()
-        cost_good_to_bad = ((y_good - y_bad) ** 2).sum()
-        cost_sane = ((y_sane - y) ** 2).sum()
+        import scipy.spatial
+        cost_good = scipy.spatial.distance.cosine(y_good, y)
+        cost_bad = scipy.spatial.distance.cosine(y_bad, y)
+        cost_good_to_bad = scipy.spatial.distance.cosine(y_bad, y_good)
+        cost_sane = scipy.spatial.distance.cosine(y_sane, y)
 
         cost_other_trans = theano.tensor.max([0, 2 - cost_sane])
 
@@ -218,12 +203,15 @@ def main():
         sane_updates = learning_rule(cost_other_trans, params, eps=1e-6, rho=0.65, method='adadelta')
         unsupervised_train = theano.function([x, x_sane], [cost_other_trans, y], updates=sane_updates,
                                              on_unused_input='warn')
-        for round in xrange(20):
+        predictor = theano.function([x], y)
+        for round in xrange(2000):
             print 'round: {}'.format(round)
-            for idx, ref in enumerate(references.iterkeys()):
+            seq = references.keys()
+            shuffle(seq)
+            for idx, ref in enumerate(seq):
                 print 'idx: {}'.format(idx)
                 random_ref = choice(references.keys())
-                while random_sample == ref:
+                while random_ref == ref:
                     random_ref = choice(references.keys())
                 random_sample = references[random_ref]
                 if len(pairs[ref]) == 0:
@@ -237,7 +225,18 @@ def main():
                     print 'this cost: {}'.format(this_cost)
                     print 'this y: '
                     print this_y
-            save_model(layers, 'layers_round_{}'.format(round))
+            # save_model(layers, 'layers_round_{}'.format(round))
+            if predict_fname is not None and round % 10 == 0:
+                print 'predicting...'
+                to_output = []
+                for idx, (good, bad, ref) in enumerate(test_sentences):
+                    print 'predicting #{}'.format(idx)
+                    emb_good = predictor([good])
+                    emb_bad = predictor([bad])
+                    emb_ref = predictor([ref])
+                    to_output.append((emb_good, emb_bad, emb_ref))
+                save_model(to_output, predict_fname+'_round_'.format(round))
+
 
     embeddings = load_embeddings(opts.embeddings)
     shared = prepare_shared_embeddings(vocab, model=embeddings)
