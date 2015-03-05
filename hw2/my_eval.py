@@ -181,11 +181,12 @@ def main():
         y_bad = layers_bad[-1].h[-1]
         y_sane = layers_sane[-1].h[-1]
 
-        import scipy.spatial
-        cost_good = scipy.spatial.distance.cosine(y_good, y)
-        cost_bad = scipy.spatial.distance.cosine(y_bad, y)
-        cost_good_to_bad = scipy.spatial.distance.cosine(y_bad, y_good)
-        cost_sane = scipy.spatial.distance.cosine(y_sane, y)
+        def cos_dist(x, y):
+            return - theano.dot(x,y) / (x.norm(2) * y.norm(2))
+        cost_good = cos_dist(y_good, y)
+        cost_bad = cos_dist(y_bad, y)
+        cost_good_to_bad = cos_dist(y_bad, y_good)
+        cost_sane = cos_dist(y_sane, y)
 
         cost_other_trans = theano.tensor.max([0, 2 - cost_sane])
 
