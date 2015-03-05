@@ -22,6 +22,7 @@ def main():
     parser.add_argument('--save-every', default=1, type=int)
     parser.add_argument('--load-model', default=None, type=str)
     parser.add_argument('--predict', default=None, type=str)
+    parser.add_argument('--embeddings', default='data/embeddings', type=str)
     # note that if x == [2, 3, 3], then x[:None] == x[:] == x (copy); no need for sys.maxint
     opts = parser.parse_args()
 
@@ -44,6 +45,8 @@ def main():
                 yield None
 
     vocab = dict()
+    references = dict()
+    pairs = dict()
     test_sentences = []
     if opts.test_file is not None:
         print 'loading test file {}'.format(opts.test_file)
@@ -52,9 +55,8 @@ def main():
             test_sentences.append((loaded[0], loaded[1], loaded[2]))
 
     else:
-        references = dict()
-        pairs = dict()
-        for (h1, h2, ref), label in islice(zip(sentences(opts.input, infinite=True), labels(infinite=True)), opts.num_sentences):
+        for (h1, h2, ref), label in islice(zip(sentences(opts.input, infinite=True), labels(infinite=True)),
+                                           opts.num_sentences):
             if len(ref) == 0:
                 # no more sentences
                 print 'h1: {}, h2: {} label: '.format(h1, h2, label)
@@ -73,7 +75,7 @@ def main():
                 pairs[ref].append((np.asarray([s1], dtype=np.int32), np.asarray([s2], dtype=np.int32)))
             elif label == 1:
                 pairs[ref].append((np.asarray([s2], dtype=np.int32), np.asarray([s1], dtype=np.int32)))
-    
+
     def save_model(model, fname):
         import cPickle as pickle
 
@@ -90,10 +92,22 @@ def main():
         f.close()
         return to_return
 
+    def load_embeddings(emb_file):
+        import gensim
+        model = gensim.models.Word2Vec.load_word2vec_format(binary=True, emb_file)
+        return model
+
+    word_mapping = {v: k for k, v in vocab.iteritems()}
+
+    def map_embeddings(word):
+        w = word_mapping[word]
+        return embeddings[w.lower()]
+
     def prepare_nn(fname=None, predict_fname=None):
         print 'preparing nn...'
 
         n_words = len(vocab)
+        emb_dim = 300
         e_dim = 100
         lstm_dim = 100
         x = T.imatrix('x')
@@ -102,10 +116,10 @@ def main():
         x_sane = T.imatrix('x_sane')
 
         layers = [
-            mtproject.deeplearning.layer.tProjection(n_words, e_dim),
+            mtproject.deeplearning.layer.EmbLayer(vis_dim=emb_dim, hid_dim=e_dim, lookup_func=map_embeddings),
             mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
-            mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
-            mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
+            mtproject.deeplearning.layer.LSTM(lstm_dim, lstm_dim, minibatch=True),
+            mtproject.deeplearning.layer.LSTM(lstm_dim, lstm_dim, minibatch=True),
         ]
         if fname is not None:
             print 'loading model...'
@@ -134,21 +148,21 @@ def main():
             return
 
         layers_good = [
-            mtproject.deeplearning.layer.tProjection(orig=layers[0]),
+            mtproject.deeplearning.layer.EmbLayer(orig=layers[0]),
             mtproject.deeplearning.layer.LSTM(orig=layers[1]),
             mtproject.deeplearning.layer.LSTM(orig=layers[2]),
             mtproject.deeplearning.layer.LSTM(orig=layers[3]),
         ]
 
         layers_bad = [
-            mtproject.deeplearning.layer.tProjection(orig=layers[0]),
+            mtproject.deeplearning.layer.EmbLayer(orig=layers[0]),
             mtproject.deeplearning.layer.LSTM(orig=layers[1]),
             mtproject.deeplearning.layer.LSTM(orig=layers[2]),
             mtproject.deeplearning.layer.LSTM(orig=layers[3]),
         ]
 
         layers_sane = [
-            mtproject.deeplearning.layer.tProjection(orig=layers[0]),
+            mtproject.deeplearning.layer.EmbLayer(orig=layers[0]),
             mtproject.deeplearning.layer.LSTM(orig=layers[1]),
             mtproject.deeplearning.layer.LSTM(orig=layers[2]),
             mtproject.deeplearning.layer.LSTM(orig=layers[3]),
@@ -201,9 +215,9 @@ def main():
             print 'round: {}'.format(round)
             for idx, ref in enumerate(references.iterkeys()):
                 print 'idx: {}'.format(idx)
-                random_ref = choice(reference.keys())
+                random_ref = choice(references.keys())
                 while random_sample == ref:
-                    random_ref = choice(reference.keys())
+                    random_ref = choice(references.keys())
                 random_sample = references[random_ref]
                 if len(pairs[ref]) == 0:
                     this_cost, this_y = unsupervised_train(references[ref], random_sample)
@@ -218,6 +232,7 @@ def main():
                     print this_y
             save_model(layers, 'layers_round_{}'.format(round))
 
+    embeddings = load_embeddings(opts.embeddings)
 
     prepare_nn(fname=opts.load_model, predict_fname=opts.predict)
 
