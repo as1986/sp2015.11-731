@@ -21,16 +21,17 @@ def get_precision(h, ref):
 def get_recall(h, ref):
     return float(len(h&ref)+1e-5) / (len(ref)+1e-5)
 
-def f(precision, recall):
-    sum = precision + recall
+def f(precision, recall, beta=1):
+    sum = (beta * beta) * precision + recall
     if sum == 0:
         return 0
-    return 2 * precision * recall / sum
+    return (1 + beta * beta) * precision * recall / sum
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('infile')
     parser.add_argument('outfile')
+    parser.add_argument('--beta', default=1, type=float)
     args = parser.parse_args()
 
     # we create a generator and avoid loading all sentences into a list
@@ -53,8 +54,8 @@ def main():
         h2_precision = get_precision(bigrams[1] | trigrams[1], bigrams[2] | trigrams[2])
         h1_recall = get_recall(bigrams[0] | trigrams[0], bigrams[2] | trigrams[2])
         h2_recall = get_recall(bigrams[1] | trigrams[1], bigrams[2] | trigrams[2])
-        h1_f = f(h1_precision,h1_recall)
-        h2_f = f(h2_precision,h2_recall)
+        h1_f = f(h1_precision,h1_recall, beta=args.beta)
+        h2_f = f(h2_precision,h2_recall, beta=args.beta)
         each = np.asarray([[[h1_precision, h1_recall, h1_f]], [[h2_precision, h2_recall, h2_f]], [[len(ref)]]])
         to_save.append(each)
 

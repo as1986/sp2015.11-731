@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-import argparse  # optparse is deprecated
+import argparse
 from itertools import islice  # slicing for iterators
 from io import open
 from random import choice, shuffle
@@ -113,7 +112,8 @@ def main():
 
         n_words = len(vocab)
         e_dim = 100
-        lstm_dim = 100
+        lstm_dim = 50
+        final_dim = 100
         x = T.imatrix('x')
         x_good = T.imatrix('x_good')
         x_bad = T.imatrix('x_bad')
@@ -125,7 +125,7 @@ def main():
                 n_words, e_dim, embedding=shared_embeddings),
             mtproject.deeplearning.layer.LSTM(e_dim, lstm_dim, minibatch=True),
             mtproject.deeplearning.layer.LSTM(lstm_dim, lstm_dim, minibatch=True),
-            mtproject.deeplearning.layer.LSTM(lstm_dim, lstm_dim, minibatch=True),
+            mtproject.deeplearning.layer.LSTM(lstm_dim, final_dim, minibatch=True),
         ]
         if fname is not None:
             print 'loading model...'
@@ -181,17 +181,17 @@ def main():
         y_bad = layers_bad[-1].h[-1]
         y_sane = layers_sane[-1].h[-1]
 
-        def cos_dist(x, y):
-            return - theano.dot(x,y) / (x.norm(2) * y.norm(2))
+        def cos_dist(a, b):
+            return 1 - (a * b).sum() / (a.norm(2) * b.norm(2))
         cost_good = cos_dist(y_good, y)
         cost_bad = cos_dist(y_bad, y)
-        cost_good_to_bad = cos_dist(y_bad, y_good)
+        # cost_good_to_bad = cos_dist(y_bad, y_good)
         cost_sane = cos_dist(y_sane, y)
 
-        cost_other_trans = theano.tensor.max([0, 2 - cost_sane])
+        cost_other_trans = theano.tensor.max([0, 1 - cost_sane])
 
-        cost_hypotheses = theano.tensor.max([0, 1 + cost_good - cost_bad]) + theano.tensor.max(
-            [0, 1 - cost_good_to_bad])
+        cost_hypotheses = theano.tensor.max([0, 1 + cost_good - cost_bad]) # + theano.tensor.max(
+            # [0, 1 - cost_good_to_bad])
         cost = cost_hypotheses + cost_other_trans
 
         # L2
@@ -205,8 +205,8 @@ def main():
         unsupervised_train = theano.function([x, x_sane], [cost_other_trans, y], updates=sane_updates,
                                              on_unused_input='warn')
         predictor = theano.function([x], y)
-        for round in xrange(2000):
-            print 'round: {}'.format(round)
+        for r in xrange(2000):
+            print 'round: {}'.format(r)
             seq = references.keys()
             shuffle(seq)
             for idx, ref in enumerate(seq):
@@ -227,7 +227,7 @@ def main():
                     print 'this y: '
                     print this_y
             # save_model(layers, 'layers_round_{}'.format(round))
-            if predict_fname is not None and round % 10 == 0:
+            if predict_fname is not None and r % 10 == 0:
                 print 'predicting...'
                 to_output = []
                 for idx, (good, bad, ref) in enumerate(test_sentences):
@@ -236,7 +236,7 @@ def main():
                     emb_bad = predictor([bad])
                     emb_ref = predictor([ref])
                     to_output.append((emb_good, emb_bad, emb_ref))
-                save_model(to_output, predict_fname+'_round_'.format(round))
+                save_model(to_output, predict_fname+'_round_'.format(r))
 
 
     embeddings = load_embeddings(opts.embeddings)

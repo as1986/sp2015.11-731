@@ -1,3 +1,7 @@
+I tried to implement an LSTM based language model but till now it doesn't seem to have learnt reasonable sentence
+embeddings. To be safe I submitted the output from a simple meteor score calculator.
+
+
 There are three Python programs here (`-h` for usage):
 
  - `./evaluate` evaluates pairs of MT output hypotheses relative to a reference translation using counts of matched words
