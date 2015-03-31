@@ -41,28 +41,32 @@ def initialize_future(f):
     future_table = dict()
     summa = 0.
     count = 0.
-    for span_i, span_j in gen_range((0, len(f))):
-        candidate = f[span_i:span_j]
-        if span_i == span_j:
-            future_table[(span_i, span_j)] = 0.
-        else:
-            cost = - (sys.maxint-1)
-            if candidate in tm:
-                count += 1
-                for phrase in tm[candidate]:
-                    cand_cost = phrase.logprob
-                    lm_state = ()
-                    for w in phrase.english.split():
-                        (lm_state, word_logprob) = lm.score(lm_state,w)
-                        cand_cost += word_logprob
-                    cost = max([cost, cand_cost])
-            # summa += cost
-            future_table[(span_i, span_j)] = cost
-
-    for span_i in xrange(0, len(f)):
-        for span_j in xrange(span_i+1, len(f)):
-            cost = max([future_table[(span_i, span_k)] + future_table[(span_k, span_j)] for span_k in xrange(span_i, span_j)])
-            future_table[(span_i, span_j)] = cost
+    for window_size in xrange(len(f)):
+        for span_i in xrange(0, len(f)+1):
+            span_j = span_i + window_size
+            if span_j > len(f)+1:
+                continue
+            candidate = f[span_i:span_j]
+            if span_i == span_j:
+                future_table[(span_i, span_j)] = 0.
+            else:
+                cost = - (sys.maxint-1)
+                for prev_window_size in xrange(1,window_size):
+                    pp_window_size = window_size - prev_window_size
+                    prev_k = span_j - pp_window_size
+                    prev_i = prev_k - prev_window_size
+                    cost = max([cost, future_table[(prev_i, prev_k)] + future_table[(prev_k, span_j)]])
+                if candidate in tm:
+                    count += 1
+                    for phrase in tm[candidate]:
+                        cand_cost = phrase.logprob
+                        lm_state = ()
+                        for w in phrase.english.split():
+                            (lm_state, word_logprob) = lm.score(lm_state,w)
+                            cand_cost += word_logprob
+                        cost = max([cost, cand_cost])
+                # summa += cost
+                future_table[(span_i, span_j)] = cost
 
     # for k in future_table.iterkeys():
         # if future_table[k] == - (sys.maxint-1):
@@ -122,7 +126,7 @@ for sen_idx, f in enumerate(input_sents):
                             for position in xrange(max(0, len(h.translated)-15), len(h.translated) + 1):
                                 to_examine = h.translated[:position] + [phrase] + h.translated[position:]
                                 langprob = 0.0
-                                lm_state = lm.begin()
+                                lm_state = lm.begin() if num_translated+j-i == len(f) else ()
                                 for p in to_examine:
                                     for word in p.english.split():
                                         (lm_state, word_logprob) = lm.score(lm_state, word)
