@@ -30,16 +30,17 @@ hypothesis = namedtuple('hypothesis', 'logprob, translated, transprob, lm_state,
 
 def gen_range(span_tuple):
     assert isinstance(span_tuple, tuple)
-    for span_i in xrange(span_tuple[0], span_tuple[1]+1):
-        for span_j in xrange(span_i, span_tuple[1]+1):
+    for span_i in xrange(span_tuple[0], span_tuple[1] + 1):
+        for span_j in xrange(span_i, span_tuple[1] + 1):
             yield (span_i, span_j)
 
+
 future_table = None
+
 
 def initialize_future(f):
     global future_table
     future_table = dict()
-    summa = 0.
     count = 0.
     for window_size in xrange(len(f)):
         for span_i in xrange(0, len(f)+1):
@@ -68,8 +69,8 @@ def initialize_future(f):
                 # summa += cost
                 future_table[(span_i, span_j)] = cost
 
-    # for k in future_table.iterkeys():
-        # if future_table[k] == - (sys.maxint-1):
+            # for k in future_table.iterkeys():
+            # if future_table[k] == - (sys.maxint-1):
             # future_table[k] = summa / count
 
 
@@ -91,6 +92,7 @@ def compute_future(fut_range_span, f):
 
     return sum([future_table[ra] for ra in l_range])
 
+
 for sen_idx, f in enumerate(input_sents):
     sys.stderr.write('Decoding #{}...\n'.format(sen_idx))
 
@@ -103,7 +105,7 @@ for sen_idx, f in enumerate(input_sents):
     # HINT: Generalize this so that stacks[i] contains translations
     # of any i words (remember to keep track of which words those
     # are, and to estimate future costs)
-    initial_hypothesis = hypothesis(0.0, [], 0.0, lm.begin(), rangeset.RangeSet(0,0), rangeset.RangeSet(0, len(f)))
+    initial_hypothesis = hypothesis(0.0, [], 0.0, lm.begin(), rangeset.RangeSet(0, 0), rangeset.RangeSet(0, len(f)))
 
     stacks = [{} for _ in f] + [{}]
     stacks[0][''] = initial_hypothesis
@@ -120,10 +122,8 @@ for sen_idx, f in enumerate(input_sents):
                         fut_prob = compute_future(fut_spans, f)
 
                         for phrase in tm[f[i:j]]:
-                            max_langprob = None
-                            best_translated = None
-                            best_lmstate = None
-                            for position in xrange(max(0, len(h.translated)-15), len(h.translated) + 1):
+                            position_candidates = []
+                            for position in xrange(max(0, len(h.translated) - 15), len(h.translated) + 1):
                                 to_examine = h.translated[:position] + [phrase] + h.translated[position:]
                                 langprob = 0.0
                                 lm_state = lm.begin() if num_translated+j-i == len(f) else ()
@@ -132,17 +132,18 @@ for sen_idx, f in enumerate(input_sents):
                                         (lm_state, word_logprob) = lm.score(lm_state, word)
                                         langprob += word_logprob
                                 langprob += lm.end(lm_state) if j == len(f) else 0.0
-                                if max_langprob is None or langprob > max_langprob:
-                                    max_langprob = langprob
-                                    best_translated = to_examine
-                                    best_lmstate = lm_state
-                            new_hypothesis = hypothesis(h.transprob + phrase.logprob + max_langprob + fut_prob, best_translated,
-                                                        phrase.logprob + h.transprob, best_lmstate, rest_spans, fut_spans)
-                            sofar = ' '.join([x.english for x in new_hypothesis.translated])
-                            if sofar not in stacks[num_translated+j-i] or stacks[num_translated+j-i][sofar].logprob < new_hypothesis.logprob:  # second case is recombination
-                                stacks[num_translated+j-i][sofar] = new_hypothesis
+                                position_candidates.append((langprob, to_examine, lm_state))
+                            for position_cand in heapq.nlargest(10, position_candidates, key=lambda x: x[0]):
+                                new_hypothesis = hypothesis(h.transprob + phrase.logprob + position_cand[0] + fut_prob, position_cand[1],
+                                                            phrase.logprob + h.transprob, position_cand[2], rest_spans, fut_spans)
+                                sofar = ' '.join([x.english for x in new_hypothesis.translated])
+                                if sofar not in stacks[num_translated + j - i] \
+                                        or stacks[num_translated + j - i][sofar].logprob < new_hypothesis.logprob:
+                                                # second case is recombination
+                                    stacks[num_translated + j - i][sofar] = new_hypothesis
         this_winner = max(stack.itervalues(), key=lambda h: h.logprob)
-        sys.stderr.write('stack size: {} best: {}\n'.format(len(stacks[num_translated]), ' '.join([x.english for x in this_winner.translated])))
+        sys.stderr.write('stack size: {} best: {}\n'.format(len(stacks[num_translated]),
+                                                            ' '.join([x.english for x in this_winner.translated])))
 
     # find best translation by looking at the best scoring hypothesis
     # on the last stack
