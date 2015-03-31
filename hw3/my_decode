@@ -1,0 +1,131 @@
+#!/usr/bin/env python
+import argparse
+import sys
+import models
+import heapq
+from collections import namedtuple
+
+parser = argparse.ArgumentParser(description='Simple phrase based decoder.')
+parser.add_argument('-i', '--input', dest='input', default='data/input',
+                    help='File containing sentences to translate (default=data/input)')
+parser.add_argument('-t', '--translation-model', dest='tm', default='data/tm',
+                    help='File containing translation model (default=data/tm)')
+parser.add_argument('-s', '--stack-size', dest='s', default=200, type=int, help='Maximum stack size (default=1)')
+parser.add_argument('-n', '--num_sentences', dest='num_sents', default=sys.maxint, type=int,
+                    help='Number of sentences to decode (default=no limit)')
+parser.add_argument('-l', '--language-model', dest='lm', default='data/lm',
+                    help='File containing ARPA-format language model (default=data/lm)')
+parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,
+                    help='Verbose mode (default=off)')
+opts = parser.parse_args()
+
+tm = models.TM(opts.tm, sys.maxint)
+lm = models.LM(opts.lm)
+sys.stderr.write('Decoding %s...\n' % (opts.input,))
+input_sents = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
+
+hypothesis = namedtuple('hypothesis', 'logprob, translated, transprob, lm_state')
+
+
+
+for f in input_sents:
+    # The following code implements a DP monotone decoding
+    # algorithm (one that doesn't permute the target phrases).
+    # Hence all hypotheses in stacks[i] represent translations of 
+    # the first i words of the input sentence.
+    # HINT: Generalize this so that stacks[i] contains translations
+    # of any i words (remember to keep track of which words those
+    # are, and to estimate future costs)
+    initial_hypothesis = hypothesis(0.0, [], 0.0, lm.begin())
+    initial_hypothesis_r = hypothesis(0.0, [], 0.0, lm.begin())
+
+    stacks = [{} for _ in f] + [{}]
+    stacks_r = [{} for _ in f] + [{}]
+    stacks[0][''] = initial_hypothesis
+    stacks_r[-1][''] = initial_hypothesis_r
+
+    for i, stack_r in enumerate(reversed(stacks_r[0:])):
+        i_r = len(stacks_r[0:])-1-i
+        # extend the top s hypotheses in the current stack
+        for h in heapq.nlargest(opts.s, stack_r.itervalues(), key=lambda h: h.logprob):  # prune
+            for j in reversed(range(0, i_r)):
+                if f[j:i_r] in tm:
+                    for phrase in tm[f[j:i_r]]:
+                        transprob = h.transprob + phrase.logprob
+                        max_langprob = None
+                        best_translated = None
+                        best_lmstate = None
+                        for position in xrange(0, len(h.translated) + 1):
+                            to_examine = h.translated[:position] + [phrase] + h.translated[position:]
+                            langprob = 0.0
+                            lm_state = lm.begin()
+                            bad_phrase = False
+                            for p in to_examine:
+
+                                for word in p.english.split():
+                                    (lm_state, word_logprob) = lm.score(lm_state, word)
+                                    langprob += word_logprob
+                                    if max_langprob is not None and langprob < max_langprob:
+                                        bad_phrase = True
+                                        break
+                                if bad_phrase:
+                                    break
+                            if bad_phrase:
+                                continue
+                            langprob += lm.end(lm_state)
+
+                            if max_langprob is None or langprob > max_langprob:
+                                max_langprob = langprob
+                                best_translated = to_examine
+                                best_lmstate = lm_state
+                        new_hypothesis = hypothesis(transprob + max_langprob, best_translated, transprob, best_lmstate)
+                        sofar = ' '.join([x.english for x in new_hypothesis.translated])
+                        if sofar not in stacks_r[j] or stacks_r[j][sofar].logprob < new_hypothesis.logprob:  # second case is recombination
+                            stacks_r[j][sofar] = new_hypothesis
+
+    for i, stack in enumerate(stacks[:-1]):
+        # extend the top s hypotheses in the current stack
+        for h in heapq.nlargest(opts.s, stack.itervalues(), key=lambda h: h.logprob):  # prune
+            for j in xrange(i + 1, len(f) + 1):
+                if f[i:j] in tm:
+                    for phrase in tm[f[i:j]]:
+                        transprob = h.transprob + phrase.logprob
+                        max_langprob = None
+                        best_translated = None
+                        best_lmstate = None
+                        for position in xrange(0, len(h.translated) + 1):
+                            to_examine = h.translated[:position] + [phrase] + h.translated[position:]
+                            langprob = 0.0
+                            lm_state = lm.begin()
+                            for p in to_examine:
+                                for word in p.english.split():
+                                    (lm_state, word_logprob) = lm.score(lm_state, word)
+                                    langprob += word_logprob
+                            langprob += lm.end(lm_state) if j == len(f) else 0.0
+                            if max_langprob is None or langprob > max_langprob:
+                                max_langprob = langprob
+                                best_translated = to_examine
+                                best_lmstate = lm_state
+                        new_hypothesis = hypothesis(transprob + max_langprob, best_translated, transprob, best_lmstate)
+                        sofar = ' '.join([x.english for x in new_hypothesis.translated])
+                        if sofar not in stacks[j] or stacks[j][sofar].logprob < new_hypothesis.logprob:  # second case is recombination
+                            stacks[j][sofar] = new_hypothesis
+
+                            # find best translation by looking at the best scoring hypothesis
+    # on the last stack
+    winner = max([max(stacks[-1].itervalues(), key=lambda h: h.logprob), max(stacks_r[0].itervalues(), key=lambda h: h.logprob)], key=lambda h: h.logprob)
+    # winner = max(stacks_r[0].itervalues(), key=lambda h: h.logprob)
+
+    def extract_english_recursive(h):
+        return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
+
+    # print extract_english_recursive(winner)
+    print ' '.join([x.english for x in winner.translated])
+
+    if opts.verbose:
+        def extract_tm_logprob(h):
+            return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+
+        tm_logprob = extract_tm_logprob(winner)
+        sys.stderr.write('LM = %f, TM = %f, Total = %f\n' %
+                         (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
