@@ -12,9 +12,10 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('predfile')
-    parser.add_argument('--labels', default=None, type=str)
+    parser.add_argument('labels', default=None, type=str)
     parser.add_argument('--diff', action='store_true')
     parser.add_argument('--alternative', default=None, type=str)
+    parser.add_argument('--output-all', action='store_true')
 
 
     args = parser.parse_args()
@@ -68,11 +69,10 @@ def main():
         return output
 
     # assert len(labels)==len(predictions)
-    if len(labels) > 0:
-        dur = min([len(labels), len(predictions)])
-    else:
-        labels = [1] * len(predictions)
-        dur = len(predictions)
+    if len(labels) < len(predictions):
+        remain = [1] * (len(predictions) - len(labels))
+        labels = labels + remain
+    dur = len(predictions)
     min_pred = predictions[:dur]
     min_labels = labels[:dur]
     for idx, (pred, label) in enumerate(zip(min_pred, min_labels)):
