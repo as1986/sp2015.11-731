@@ -11,7 +11,7 @@ parser.add_argument('-i', '--input', dest='input', default='data/input',
                     help='File containing sentences to translate (default=data/input)')
 parser.add_argument('-t', '--translation-model', dest='tm', default='data/tm',
                     help='File containing translation model (default=data/tm)')
-parser.add_argument('-s', '--stack-size', dest='s', default=30, type=int, help='Maximum stack size (default=1)')
+parser.add_argument('-s', '--stack-size', dest='s', default=300, type=int, help='Maximum stack size (default=1)')
 parser.add_argument('-n', '--num_sentences', dest='num_sents', default=sys.maxint, type=int,
                     help='Number of sentences to decode (default=no limit)')
 parser.add_argument('-l', '--language-model', dest='lm', default='data/lm',
@@ -119,7 +119,7 @@ for sen_idx, f in enumerate(input_sents):
                             max_langprob = None
                             best_translated = None
                             best_lmstate = None
-                            for position in xrange(max(0, len(h.translated)-10), len(h.translated) + 1):
+                            for position in xrange(max(0, len(h.translated)-15), len(h.translated) + 1):
                                 to_examine = h.translated[:position] + [phrase] + h.translated[position:]
                                 langprob = 0.0
                                 lm_state = lm.begin()
