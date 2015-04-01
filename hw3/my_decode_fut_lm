@@ -1,0 +1,167 @@
+#!/usr/bin/env python
+import argparse
+import sys
+import models
+import heapq
+from collections import namedtuple
+import rangeset
+
+parser = argparse.ArgumentParser(description='Simple phrase based decoder.')
+parser.add_argument('-i', '--input', dest='input', default='data/input',
+                    help='File containing sentences to translate (default=data/input)')
+parser.add_argument('-t', '--translation-model', dest='tm', default='data/tm',
+                    help='File containing translation model (default=data/tm)')
+parser.add_argument('-s', '--stack-size', dest='s', default=300, type=int, help='Maximum stack size (default=1)')
+parser.add_argument('-n', '--num_sentences', dest='num_sents', default=sys.maxint, type=int,
+                    help='Number of sentences to decode (default=no limit)')
+parser.add_argument('-l', '--language-model', dest='lm', default='data/lm',
+                    help='File containing ARPA-format language model (default=data/lm)')
+parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,
+                    help='Verbose mode (default=off)')
+opts = parser.parse_args()
+
+tm = models.TM(opts.tm, sys.maxint)
+lm = models.LM(opts.lm)
+sys.stderr.write('Decoding %s...\n' % (opts.input,))
+input_sents = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
+
+hypothesis = namedtuple('hypothesis', 'logprob, translated, transprob, lm_state, translatedsegments, uncoveredsegments')
+
+
+def gen_range(span_tuple):
+    assert isinstance(span_tuple, tuple)
+    for span_i in xrange(span_tuple[0], span_tuple[1] + 1):
+        for span_j in xrange(span_i, span_tuple[1] + 1):
+            yield (span_i, span_j)
+
+
+future_table = None
+
+
+def initialize_future(f):
+    global future_table
+    future_table = dict()
+    count = 0.
+    for window_size in xrange(len(f)):
+        for span_i in xrange(0, len(f)+1):
+            span_j = span_i + window_size
+            if span_j > len(f)+1:
+                continue
+            candidate = f[span_i:span_j]
+            if span_i == span_j:
+                future_table[(span_i, span_j)] = 0.
+            else:
+                cost = - (sys.maxint-1)
+                for prev_window_size in xrange(1,window_size):
+                    pp_window_size = window_size - prev_window_size
+                    prev_k = span_j - pp_window_size
+                    prev_i = prev_k - prev_window_size
+                    cost = max([cost, future_table[(prev_i, prev_k)] + future_table[(prev_k, span_j)]])
+                if candidate in tm:
+                    count += 1
+                    for phrase in tm[candidate]:
+                        cand_cost = phrase.logprob
+                        lm_state = ()
+                        for w in phrase.english.split():
+                            (lm_state, word_logprob) = lm.score(lm_state,w)
+                            cand_cost += word_logprob
+                        cost = max([cost, cand_cost])
+                # summa += cost
+                future_table[(span_i, span_j)] = cost
+
+            # for k in future_table.iterkeys():
+            # if future_table[k] == - (sys.maxint-1):
+            # future_table[k] = summa / count
+
+
+def clear_future():
+    global future_table
+    if future_table is not None:
+        del future_table
+        future_table = None
+
+
+def compute_future(fut_range_span, f):
+    global future_table
+    assert isinstance(fut_range_span, rangeset.RangeSet)
+
+    l_range = list(fut_range_span)
+
+    if future_table is None:
+        initialize_future(f)
+
+    return sum([future_table[ra] for ra in l_range])
+
+
+for sen_idx, f in enumerate(input_sents):
+    sys.stderr.write('Decoding #{}...\n'.format(sen_idx))
+
+    clear_future()
+
+    # The following code implements a DP monotone decoding
+    # algorithm (one that doesn't permute the target phrases).
+    # Hence all hypotheses in stacks[i] represent translations of 
+    # the first i words of the input sentence.
+    # HINT: Generalize this so that stacks[i] contains translations
+    # of any i words (remember to keep track of which words those
+    # are, and to estimate future costs)
+    initial_hypothesis = hypothesis(0.0, [], 0.0, lm.begin(), rangeset.RangeSet(0, 0), rangeset.RangeSet(0, len(f)))
+
+    stacks = [{} for _ in f] + [{}]
+    stacks[0][''] = initial_hypothesis
+
+    for num_translated, stack in enumerate(stacks[:-1]):
+        # extend the top s hypotheses in the current stack
+        for h in heapq.nlargest(opts.s, stack.itervalues(), key=lambda h: h.logprob):  # prune
+            for span in h.uncoveredsegments:
+                for generated_span in gen_range(span):
+                    i, j = generated_span[0], generated_span[1]
+                    if f[i:j] in tm:
+                        fut_spans = h.uncoveredsegments - (i, j)
+                        rest_spans = h.translatedsegments | (i, j)
+                        fut_prob = compute_future(fut_spans, f)
+
+                        for phrase in tm[f[i:j]]:
+                            position_candidates = []
+                            for position in xrange(max(0, len(h.translated) - 15), len(h.translated) + 1):
+                                to_examine = h.translated[:position] + [phrase] + h.translated[position:]
+                                langprob = 0.0
+                                lm_state = lm.begin() if h.translatedsegments.measure()>0 else ()
+                                for p in to_examine:
+                                    for word in p.english.split():
+                                        (lm_state, word_logprob) = lm.score(lm_state, word)
+                                        langprob += word_logprob
+                                langprob += lm.end(lm_state) if h.translatedsegments.measure()>0 else 0.0
+                                position_candidates.append((langprob, to_examine, lm_state))
+                            for position_cand in heapq.nlargest(10, position_candidates, key=lambda x: x[0]):
+                                new_hypothesis = hypothesis(h.transprob + phrase.logprob + position_cand[0] + fut_prob, position_cand[1],
+                                                            phrase.logprob + h.transprob, position_cand[2], rest_spans, fut_spans)
+                                sofar = ' '.join([x.english for x in new_hypothesis.translated])
+                                if sofar not in stacks[num_translated + j - i] \
+                                        or stacks[num_translated + j - i][sofar].logprob < new_hypothesis.logprob:
+                                                # second case is recombination
+                                    stacks[num_translated + j - i][sofar] = new_hypothesis
+                            del position_candidates
+                            position_candidates = None
+        this_winner = max(stack.itervalues(), key=lambda h: h.logprob)
+        sys.stderr.write('stack size: {} best: {}\n'.format(len(stacks[num_translated]),
+                                                            ' '.join([x.english for x in this_winner.translated])))
+
+
+    # find best translation by looking at the best scoring hypothesis
+    # on the last stack
+    winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+
+    def extract_english_recursive(h):
+        return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
+
+    # print extract_english_recursive(winner)
+    print ' '.join([x.english for x in winner.translated])
+
+    if opts.verbose:
+        def extract_tm_logprob(h):
+            return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+
+        tm_logprob = extract_tm_logprob(winner)
+        sys.stderr.write('LM = %f, TM = %f, Total = %f\n' %
+                         (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
