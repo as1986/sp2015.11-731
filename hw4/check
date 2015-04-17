@@ -1,0 +1,21 @@
+#!/usr/bin/env python
+import sys
+import argparse
+from collections import defaultdict
+from utils import read_ttable
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--input', '-i', default='data/dev+test.input')
+parser.add_argument('--ttable', '-t', default='data/ttable')
+args = parser.parse_args()
+
+translation_table = read_ttable(args.ttable)
+
+for i, (input_line, output_line) in enumerate(zip(open(args.input), sys.stdin)):
+	left_context, phrase, right_context = [part.strip() for part in input_line.decode('utf-8').strip().split('|||')]
+	reranked_list = [part.strip() for part in output_line.decode('utf-8').strip().split('|||')]
+	candidates = set(translation_table[phrase].keys())
+	for item in reranked_list:
+		if item not in candidates:
+			print >>sys.stderr, 'Translation "%s" found in re-ranked list for input line #%d, but not is not in the translation table for the corresponding source phrase "%s"' % (item, i + 1, phrase)
+	sys.stdout.write(output_line)
