@@ -1,3 +1,5 @@
+I acccidentally erased the parameters that I obtain from my hinge loss model. The next batch of parameters will come well past the deadline so I am submitting a modified default, with some magical values (courtesy of Juneki).
+
 There are three Python programs here (`-h` for usage):
 
  - `./rerank` a simple reranker that simply sorts candidate translations on log p(czech|english)
