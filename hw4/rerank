@@ -3,6 +3,11 @@ import sys
 import argparse
 from collections import defaultdict
 from utils import read_ttable
+import theano
+import theano.tensor as T
+
+def score(w, v_correct, v_bad):
+    return T.max([0, 1 - (v_correct-v_bad).dot(w)])
 
 def dot(w, v):
 	s = 0.0
@@ -16,7 +21,12 @@ parser.add_argument('--ttable', '-t', default='data/ttable')
 args = parser.parse_args()
 
 translation_table = read_ttable(args.ttable)
-weights = {'log_prob_tgs': 1.0}
+#  0.76573386 -0.44438352 -0.02137666  0.33951745
+# 0.43037707 -0.15132046  0.208022    0.06571242
+# loss: 2443177.25519
+# [[-0.01999413  0.13207281  0.32992917  0.39193331]]
+weights = {'log_prob_tgs': 0.9,'log_prob_sgt': 0.1, 'log_lex_prob_tgs': 0., 'log_lex_prob_sgt': 0.}
+# weights = {'log_prob_tgs': -0.01999413,'log_prob_sgt': 0.13207281, 'log_lex_prob_tgs': 0.32992917, 'log_lex_prob_sgt': 0.39193331}
 
 for line in open(args.input):
 	left_context, phrase, right_context = [part.strip() for part in line.decode('utf-8').strip().split('|||')]
